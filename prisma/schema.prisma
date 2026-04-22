@@ -1,0 +1,64 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                  String        @id @default(cuid())
+  supabaseUserId      String        @unique
+  email               String        @unique
+  name                String
+  bio                 String?
+  avatarUrl           String?
+  stripeAccountId     String?
+  stripeOnboarded     Boolean       @default(false)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  tipPage             TipPage?
+  receivedTips        Transaction[] @relation("ReceivedTips")
+}
+
+model TipPage {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  slug            String    @unique
+  displayName     String
+  message         String?
+  suggestedAmounts Int[]    @default([100, 200, 500])
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Transaction {
+  id                    String            @id @default(cuid())
+  recipientId           String
+  amountCents           Int
+  currency              String            @default("eur")
+  status                TransactionStatus @default(PENDING)
+  stripePaymentIntentId String?           @unique
+  stripeCheckoutSessionId String?         @unique
+  tipperEmail           String?
+  tipperName            String?
+  message               String?
+  platformFeeCents      Int               @default(0)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  recipient             User              @relation("ReceivedTips", fields: [recipientId], references: [id])
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
