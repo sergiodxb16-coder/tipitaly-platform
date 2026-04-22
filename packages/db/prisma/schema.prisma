@@ -9,57 +9,185 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-model User {
-  id                  String        @id @default(cuid())
-  supabaseUserId      String        @unique
-  email               String        @unique
-  name                String
-  bio                 String?
-  avatarUrl           String?
-  stripeAccountId     String?
-  stripeOnboarded     Boolean       @default(false)
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+// ─── Enums ───────────────────────────────────────────────────────────────────
 
-  tipPage             TipPage?
-  receivedTips        Transaction[] @relation("ReceivedTips")
+// WHITE < GOLD < PLATINUM (cumulative benefits; compare by ordinal in app code)
+enum CardLevel {
+  WHITE
+  GOLD
+  PLATINUM
 }
 
-model TipPage {
-  id              String    @id @default(cuid())
-  userId          String    @unique
-  slug            String    @unique
-  displayName     String
-  message         String?
-  suggestedAmounts Int[]    @default([100, 200, 500])
-  isActive        Boolean   @default(true)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+enum CardStatus {
+  INACTIVE
+  ACTIVE
+  EXPIRED
 }
 
-model Transaction {
-  id                    String            @id @default(cuid())
-  recipientId           String
-  amountCents           Int
-  currency              String            @default("eur")
-  status                TransactionStatus @default(PENDING)
-  stripePaymentIntentId String?           @unique
-  stripeCheckoutSessionId String?         @unique
-  tipperEmail           String?
-  tipperName            String?
-  message               String?
-  platformFeeCents      Int               @default(0)
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
-
-  recipient             User              @relation("ReceivedTips", fields: [recipientId], references: [id])
+enum PartnerCategory {
+  RISTORANTE
+  HOTEL
+  BENESSERE
+  SPORT
+  CULTURA
+  SHOPPING
+  SERVIZI
+  ALTRO
 }
 
-enum TransactionStatus {
-  PENDING
-  COMPLETED
-  FAILED
-  REFUNDED
+enum AssignmentSource {
+  B2B_BATCH    // card assigned from a company batch
+  B2C_PURCHASE // card purchased directly by the cardholder
+}
+
+// ─── B2C Identity ────────────────────────────────────────────────────────────
+
+// End-user who holds a card; linked to Supabase Auth
+model Cardholder {
+  id          String   @id @default(cuid())
+  supabaseUid String   @unique
+  email       String   @unique
+  nome        String
+  cognome     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  cardAssignments   CardAssignment[]
+  couponRedemptions CouponRedemption[]
+  travelBookings    TravelBooking[]
+}
+
+// ─── B2B Company ─────────────────────────────────────────────────────────────
+
+// Corporate client that purchases card batches for their employees
+model Company {
+  id             String   @id @default(cuid())
+  ragioneSociale String
+  pIva           String   @unique
+  emailReferente String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  cardBatches CardBatch[]
+}
+
+// ─── Card Inventory ──────────────────────────────────────────────────────────
+
+model Card {
+  id                 String     @id @default(cuid())
+  serialNumber       String     @unique
+  level              CardLevel  @default(WHITE)
+  status             CardStatus @default(INACTIVE)
+  activationDeadline DateTime?
+  expiresAt          DateTime?
+  cardBatchId        String?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  cardBatch  CardBatch?      @relation(fields: [cardBatchId], references: [id])
+  assignment CardAssignment?
+}
+
+// Batch of cards purchased by a Company (B2B)
+model CardBatch {
+  id        String   @id @default(cuid())
+  batchCode String   @unique
+  quantity  Int
+  companyId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company     Company          @relation(fields: [companyId], references: [id])
+  cards       Card[]
+  assignments CardAssignment[]
+}
+
+// Links a Card to a Cardholder; one active assignment per card
+model CardAssignment {
+  id           String           @id @default(cuid())
+  cardId       String           @unique
+  cardholderId String
+  cardBatchId  String?
+  source       AssignmentSource
+  assignedAt   DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  card       Card       @relation(fields: [cardId], references: [id])
+  cardholder Cardholder @relation(fields: [cardholderId], references: [id])
+  cardBatch  CardBatch? @relation(fields: [cardBatchId], references: [id])
+}
+
+// ─── Partners & Coupons ──────────────────────────────────────────────────────
+
+model Partner {
+  id        String          @id @default(cuid())
+  nome      String
+  logoUrl   String?
+  categoria PartnerCategory
+  sitoWeb   String?
+  isActive  Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  coupons Coupon[]
+}
+
+model Coupon {
+  id             String          @id @default(cuid())
+  partnerId      String
+  categoria      PartnerCategory
+  descrizione    String
+  /// Percentage discount, e.g. 15.00 = 15%
+  sconto         Decimal         @db.Decimal(5, 2)
+  scadenza       DateTime?
+  codiceQr       String?         @unique
+  maxRedemptions Int?
+  minCardLevel   CardLevel       @default(WHITE)
+  isActive       Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  partner     Partner            @relation(fields: [partnerId], references: [id])
+  redemptions CouponRedemption[]
+}
+
+// Tracks each coupon use by a cardholder
+model CouponRedemption {
+  id           String     @id @default(cuid())
+  couponId     String
+  cardholderId String
+  redeemedAt   DateTime   @default(now())
+
+  coupon     Coupon     @relation(fields: [couponId], references: [id])
+  cardholder Cardholder @relation(fields: [cardholderId], references: [id])
+}
+
+// ─── Travel ──────────────────────────────────────────────────────────────────
+
+model TravelOffer {
+  id                 String    @id @default(cuid())
+  titolo             String
+  destinazione       String
+  /// Percentage discount via Travel Advantage partnership
+  scontoPercent      Decimal   @db.Decimal(5, 2)
+  travelAdvantageUrl String?
+  scadenza           DateTime?
+  minCardLevel       CardLevel @default(WHITE)
+  isActive           Boolean   @default(true)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  bookings TravelBooking[]
+}
+
+// Records a cardholder's use of a travel offer
+model TravelBooking {
+  id            String   @id @default(cuid())
+  travelOfferId String
+  cardholderId  String
+  notes         String?
+  bookedAt      DateTime @default(now())
+
+  travelOffer TravelOffer @relation(fields: [travelOfferId], references: [id])
+  cardholder  Cardholder  @relation(fields: [cardholderId], references: [id])
 }
