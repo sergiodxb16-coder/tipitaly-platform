@@ -1,0 +1,25 @@
+{
+  "name": "@tip-italy/email",
+  "version": "0.1.0",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "dev": "email dev --port 3002",
+    "build": "email build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@react-email/components": "^0.0.25",
+    "react": "^19.0.0",
+    "react-email": "^3.0.4"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.1",
+    "typescript": "^5.7.2"
+  }
+}

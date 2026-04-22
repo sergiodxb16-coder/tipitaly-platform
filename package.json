@@ -1,41 +1,28 @@
 {
   "name": "tip-italy",
-  "version": "0.1.0",
   "private": true,
+  "version": "0.1.0",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "typecheck": "tsc --noEmit",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:push": "prisma db push",
-    "db:studio": "prisma studio"
-  },
-  "dependencies": {
-    "@prisma/client": "^5.22.0",
-    "@stripe/stripe-js": "^4.9.0",
-    "@supabase/ssr": "^0.5.2",
-    "@supabase/supabase-js": "^2.46.2",
-    "next": "^15.0.4",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "stripe": "^17.4.0",
-    "zod": "^3.23.8"
+    "typecheck": "turbo run typecheck",
+    "db:generate": "turbo run db:generate",
+    "db:migrate": "turbo run db:migrate --filter=@tip-italy/db",
+    "db:push": "turbo run db:push --filter=@tip-italy/db",
+    "db:studio": "turbo run db:studio --filter=@tip-italy/db"
   },
   "devDependencies": {
-    "@types/node": "^20.17.10",
-    "@types/react": "^19.0.1",
-    "@types/react-dom": "^19.0.1",
-    "eslint": "^9.16.0",
-    "eslint-config-next": "^15.0.4",
     "prettier": "^3.4.2",
     "prettier-plugin-tailwindcss": "^0.6.9",
-    "prisma": "^5.22.0",
-    "tailwindcss": "^3.4.16",
+    "turbo": "^2.3.3",
     "typescript": "^5.7.2"
-  }
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.15.0"
 }
