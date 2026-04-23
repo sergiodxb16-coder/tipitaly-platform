@@ -9,6 +9,7 @@
     }
   },
   "scripts": {
+    "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
@@ -19,6 +20,7 @@
     "@prisma/client": "^5.22.0"
   },
   "devDependencies": {
+    "@types/node": "^20.17.10",
     "prisma": "^5.22.0",
     "typescript": "^5.7.2"
   }
