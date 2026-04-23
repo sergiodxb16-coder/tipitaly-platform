@@ -79,6 +79,7 @@ model Card {
   level              CardLevel  @default(WHITE)
   status             CardStatus @default(INACTIVE)
   activationDeadline DateTime?
+  activatedAt        DateTime?
   expiresAt          DateTime?
   cardBatchId        String?
   createdAt          DateTime   @default(now())
