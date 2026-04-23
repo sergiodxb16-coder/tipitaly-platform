@@ -5,11 +5,11 @@ import "./globals.css";
 const geist = Geist({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "tip.italy — Lascia una mancia digitale",
-  description: "Lascia una mancia ai tuoi lavoratori preferiti in modo semplice e veloce.",
+  title: "TipItaly Card — I tuoi vantaggi esclusivi",
+  description: "Accedi ai tuoi vantaggi esclusivi: soggiorni scontati, coupon partner, tutela legale e soccorso stradale.",
   openGraph: {
-    title: "tip.italy",
-    description: "Lascia una mancia digitale in pochi secondi.",
+    title: "TipItaly Card",
+    description: "La tua card dei vantaggi esclusivi.",
     locale: "it_IT",
     type: "website",
   },
