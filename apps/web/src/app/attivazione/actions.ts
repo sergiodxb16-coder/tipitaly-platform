@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { activateCard } from "@tip-italy/db/cards";
 import { prisma } from "@tip-italy/db";
+import { sendCardActivationEmail } from "@tip-italy/email";
 import { redirect } from "next/navigation";
 
 const ERROR_MESSAGES = {
@@ -33,6 +34,16 @@ export async function activateCardAction(formData: FormData): Promise<void> {
   if (!result.success) {
     redirect(`/attivazione?error=${encodeURIComponent(ERROR_MESSAGES[result.error])}`);
   }
+
+  // Fire-and-forget welcome email — don't block redirect on email failure
+  sendCardActivationEmail({
+    to: cardholder.email,
+    nome: cardholder.nome || cardholder.email,
+    cardLevel: result.cardLevel as "WHITE" | "GOLD" | "PLATINUM",
+    serialNumber: serial,
+    expiresAt: result.expiresAt,
+    dashboardUrl: `${process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"}/dashboard`,
+  }).catch(() => {});
 
   redirect("/dashboard?activated=1");
 }

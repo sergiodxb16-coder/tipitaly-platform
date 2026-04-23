@@ -16,9 +16,11 @@
   "dependencies": {
     "@react-email/components": "^0.0.25",
     "react": "^19.0.0",
-    "react-email": "^3.0.4"
+    "react-email": "^3.0.4",
+    "resend": "^6.12.2"
   },
   "devDependencies": {
+    "@types/node": "^20.17.10",
     "@types/react": "^19.0.1",
     "typescript": "^5.7.2"
   }

@@ -1,7 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@tip-italy/db";
-import { redeemCoupon } from "@tip-italy/db/coupons";
+import { redeemCoupon, getCouponById } from "@tip-italy/db/coupons";
+import { sendCouponDownloadedEmail } from "@tip-italy/email";
 import { NextResponse, type NextRequest } from "next/server";
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient();
@@ -28,6 +31,20 @@ export async function POST(request: NextRequest) {
     };
     return NextResponse.json({ error: messages[result.error] ?? result.error }, { status: 422 });
   }
+
+  // Send coupon email asynchronously — don't block the response
+  getCouponById(couponId).then((coupon) => {
+    if (!coupon) return;
+    return sendCouponDownloadedEmail({
+      to: cardholder.email,
+      nome: cardholder.nome || cardholder.email,
+      partnerNome: coupon.partner.nome,
+      couponDescrizione: coupon.descrizione,
+      scontoPercent: coupon.sconto.toString(),
+      scadenza: coupon.scadenza,
+      couponUrl: `${SITE_URL}/dashboard/coupon/${couponId}`,
+    });
+  }).catch(() => {});
 
   return NextResponse.json({ ok: true });
 }
