@@ -14,6 +14,10 @@
     "./cards": {
       "types": "./src/cards.ts",
       "default": "./src/cards.ts"
+    },
+    "./coupons": {
+      "types": "./src/coupons.ts",
+      "default": "./src/coupons.ts"
     }
   },
   "scripts": {
