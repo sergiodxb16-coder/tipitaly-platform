@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "email dev --port 3002",
-    "build": "email build",
+    "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
