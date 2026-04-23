@@ -18,6 +18,10 @@
     "./coupons": {
       "types": "./src/coupons.ts",
       "default": "./src/coupons.ts"
+    },
+    "./travel": {
+      "types": "./src/travel.ts",
+      "default": "./src/travel.ts"
     }
   },
   "scripts": {
