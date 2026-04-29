@@ -55,6 +55,7 @@ model Cardholder {
   cardAssignments   CardAssignment[]
   couponRedemptions CouponRedemption[]
   travelBookings    TravelBooking[]
+  purchases         CardPurchase[]
 }
 
 // ─── B2B Company ─────────────────────────────────────────────────────────────
@@ -87,6 +88,7 @@ model Card {
 
   cardBatch  CardBatch?      @relation(fields: [cardBatchId], references: [id])
   assignment CardAssignment?
+  purchase   CardPurchase?
 }
 
 // Batch of cards purchased by a Company (B2B)
@@ -161,6 +163,55 @@ model CouponRedemption {
 
   coupon     Coupon     @relation(fields: [couponId], references: [id])
   cardholder Cardholder @relation(fields: [cardholderId], references: [id])
+}
+
+// ─── B2C Purchases & Multi-currency ──────────────────────────────────────────
+
+// Supported market countries with their native currency
+enum SupportedCountry {
+  IT // Italy — EUR
+  GB // United Kingdom — GBP
+  CH // Switzerland — CHF
+}
+
+enum SupportedCurrency {
+  EUR
+  GBP
+  CHF
+}
+
+// Stripe Price IDs per card level per country
+model CountryPricing {
+  id            String          @id @default(cuid())
+  cardLevel     CardLevel
+  country       SupportedCountry
+  currency      SupportedCurrency
+  priceAmount   Int             // in minor units (e.g. 2900 = £29.00)
+  stripePriceId String          // Stripe Price ID for this market
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@unique([cardLevel, country])
+}
+
+// Records each B2C purchase with country, currency, and tax breakdown
+model CardPurchase {
+  id              String           @id @default(cuid())
+  stripeSessionId String           @unique
+  cardId          String?          @unique // set after card is created
+  cardholderId    String?          // set after cardholder upsert
+  cardLevel       CardLevel
+  country         SupportedCountry @default(IT)
+  currency        SupportedCurrency @default(EUR)
+  amountTotal     Int              // gross in minor units (incl. tax)
+  amountSubtotal  Int              // net in minor units (excl. tax)
+  taxAmount       Int              @default(0)
+  taxRate         Float?           // e.g. 0.22
+  stripeLocale    String?          // e.g. "it", "en-GB", "de"
+  createdAt       DateTime         @default(now())
+
+  card        Card?        @relation(fields: [cardId], references: [id])
+  cardholder  Cardholder?  @relation(fields: [cardholderId], references: [id])
 }
 
 // ─── Travel ──────────────────────────────────────────────────────────────────

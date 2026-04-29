@@ -22,6 +22,10 @@
     "./travel": {
       "types": "./src/travel.ts",
       "default": "./src/travel.ts"
+    },
+    "./purchases": {
+      "types": "./src/purchases.ts",
+      "default": "./src/purchases.ts"
     }
   },
   "scripts": {
@@ -29,8 +33,12 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
+    "db:seed": "ts-node --project tsconfig.json prisma/seed.ts",
     "db:studio": "prisma studio",
     "typecheck": "tsc --noEmit"
+  },
+  "prisma": {
+    "seed": "ts-node --project tsconfig.json prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0"

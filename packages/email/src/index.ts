@@ -1,11 +1,13 @@
 export { TipReceivedEmail } from "./tip-received";
 export { CardActivationEmail } from "./card-activation";
 export { CouponDownloadedEmail } from "./coupon-downloaded";
+export { CardPurchasedEmail } from "./card-purchased";
 
 import { Resend } from "resend";
 import { render } from "@react-email/components";
 import { CardActivationEmail } from "./card-activation";
 import { CouponDownloadedEmail } from "./coupon-downloaded";
+import { CardPurchasedEmail } from "./card-purchased";
 
 const FROM = "TipItaly Card <noreply@tipitalycard.com>";
 
@@ -29,6 +31,21 @@ export async function sendCardActivationEmail(params: {
     from: FROM,
     to: params.to,
     subject: `La tua TipItaly Card ${params.cardLevel} è attiva!`,
+    html,
+  });
+}
+
+export async function sendCardPurchasedEmail(params: {
+  to: string;
+  cardLevel: "WHITE" | "GOLD" | "PLATINUM";
+  serialNumber: string;
+}) {
+  const html = await render(CardPurchasedEmail(params));
+  const resend = getResend();
+  return resend.emails.send({
+    from: FROM,
+    to: params.to,
+    subject: `Acquisto confermato — TipItaly Card ${params.cardLevel}`,
     html,
   });
 }
