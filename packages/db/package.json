@@ -26,6 +26,10 @@
     "./purchases": {
       "types": "./src/purchases.ts",
       "default": "./src/purchases.ts"
+    },
+    "./partners": {
+      "types": "./src/partners.ts",
+      "default": "./src/partners.ts"
     }
   },
   "scripts": {

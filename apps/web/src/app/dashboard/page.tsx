@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@tip-italy/db";
 import { getCardForCardholder } from "@tip-italy/db/cards";
+import { getFeaturedPartners } from "@tip-italy/db/partners";
 import { CardStatusWidget } from "@/components/card-status-widget";
 import { BenefitsGrid } from "@/components/benefits-grid";
 import { redirect } from "next/navigation";
@@ -26,6 +27,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   if (!cardholder) redirect("/auth/login");
 
   const assignment = await getCardForCardholder(cardholder.id);
+  const featuredPartners = await getFeaturedPartners(6);
 
   return (
     <main className="min-h-screen bg-gray-50">
@@ -88,6 +90,48 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
               <BenefitsGrid level={assignment.card.level} />
             </section>
           </>
+        )}
+
+        {featuredPartners.length > 0 && (
+          <section>
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500">
+                Partner in evidenza
+              </h2>
+              <Link href="/dashboard/partner" className="text-xs text-orange-600 hover:underline">
+                Vedi tutti →
+              </Link>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {featuredPartners.map((p) => (
+                <Link
+                  key={p.id}
+                  href={`/partner/${p.slug ?? p.id}`}
+                  className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm hover:border-orange-200 transition-colors"
+                >
+                  {p.logoUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.logoUrl}
+                      alt={p.nome}
+                      className="h-10 w-10 rounded-lg object-contain shrink-0 border border-gray-100"
+                    />
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50 text-xl shrink-0">
+                      🏪
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{p.nome}</p>
+                    <p className="text-xs text-gray-400 truncate">
+                      {p.citta ?? p.categoria}
+                      {p.ratingMedia ? ` · ⭐ ${p.ratingMedia.toFixed(1)}` : ""}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
         )}
 
         <section className="rounded-xl border border-gray-100 bg-white p-5">

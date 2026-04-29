@@ -29,6 +29,14 @@ const BENEFITS: Benefit[] = [
     minLevel: CardLevel.WHITE,
   },
   {
+    id: "partner",
+    title: "Scopri i Partner",
+    description: "Trova partner per categoria, città e posizione con mappa interattiva.",
+    icon: "📍",
+    href: "/dashboard/partner",
+    minLevel: CardLevel.WHITE,
+  },
+  {
     id: "tutela",
     title: "Tutela Legale 24/7",
     description: "Assistenza legale su incidenti, controversie di lavoro e spese mediche.",

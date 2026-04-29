@@ -32,6 +32,9 @@ enum PartnerCategory {
   CULTURA
   SHOPPING
   SERVIZI
+  MODA
+  VIAGGI
+  INTRATTENIMENTO
   ALTRO
 }
 
@@ -56,6 +59,7 @@ model Cardholder {
   couponRedemptions CouponRedemption[]
   travelBookings    TravelBooking[]
   purchases         CardPurchase[]
+  partnerRatings    PartnerRating[]
 }
 
 // ─── B2B Company ─────────────────────────────────────────────────────────────
@@ -123,16 +127,56 @@ model CardAssignment {
 // ─── Partners & Coupons ──────────────────────────────────────────────────────
 
 model Partner {
-  id        String          @id @default(cuid())
-  nome      String
-  logoUrl   String?
-  categoria PartnerCategory
-  sitoWeb   String?
-  isActive  Boolean         @default(true)
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  id                String          @id @default(cuid())
+  nome              String
+  slug              String?         @unique
+  logoUrl           String?
+  categoria         PartnerCategory
+  sitoWeb           String?
+  descrizione       String?
+  descrizioneEstesa String?
+  indirizzo         String?
+  citta             String?
+  cap               String?
+  telefono          String?
+  emailContatto     String?
+  orari             Json?
+  latitudine        Float?
+  longitudine       Float?
+  isFeatured        Boolean         @default(false)
+  featuredOrder     Int?
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   coupons Coupon[]
+  photos  PartnerPhoto[]
+  ratings PartnerRating[]
+}
+
+model PartnerPhoto {
+  id        String   @id @default(cuid())
+  partnerId String
+  url       String
+  alt       String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  partner Partner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+}
+
+model PartnerRating {
+  id           String     @id @default(cuid())
+  partnerId    String
+  cardholderId String
+  stelle       Int
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  partner    Partner    @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  cardholder Cardholder @relation(fields: [cardholderId], references: [id])
+
+  @@unique([partnerId, cardholderId])
 }
 
 model Coupon {
