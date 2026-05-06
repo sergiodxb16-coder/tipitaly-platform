@@ -2,12 +2,14 @@ export { TipReceivedEmail } from "./tip-received";
 export { CardActivationEmail } from "./card-activation";
 export { CouponDownloadedEmail } from "./coupon-downloaded";
 export { CardPurchasedEmail } from "./card-purchased";
+export { TravelBookingEmail } from "./travel-booking";
 
 import { Resend } from "resend";
 import { render } from "@react-email/components";
 import { CardActivationEmail } from "./card-activation";
 import { CouponDownloadedEmail } from "./coupon-downloaded";
 import { CardPurchasedEmail } from "./card-purchased";
+import { TravelBookingEmail } from "./travel-booking";
 
 const FROM = "TipItaly Card <noreply@tipitalycard.com>";
 
@@ -67,4 +69,35 @@ export async function sendCouponDownloadedEmail(params: {
     subject: `Il tuo coupon ${params.partnerNome} è pronto!`,
     html,
   });
+}
+
+export async function sendTravelBookingEmail(params: {
+  to: string;
+  nome: string;
+  bookingType: "hotel" | "flight";
+  hotelName?: string;
+  city?: string;
+  checkin?: string;
+  checkout?: string;
+  roomName?: string;
+  origin?: string;
+  destination?: string;
+  departureDate?: string;
+  returnDate?: string;
+  airline?: string;
+  flightNumbers?: string;
+  adults: number;
+  totalPrice: string;
+  discountApplied?: string;
+  cardLevel: "WHITE" | "GOLD" | "PLATINUM";
+  qrCodeUrl: string;
+  bookingRef: string;
+  manageUrl: string;
+}) {
+  const html = await render(TravelBookingEmail(params));
+  const resend = getResend();
+  const subject = params.bookingType === "hotel"
+    ? `Prenotazione confermata — ${params.hotelName ?? "Hotel"}`
+    : `Volo confermato — ${params.origin} → ${params.destination}`;
+  return resend.emails.send({ from: FROM, to: params.to, subject, html });
 }

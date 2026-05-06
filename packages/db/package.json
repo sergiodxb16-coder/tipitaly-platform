@@ -30,6 +30,14 @@
     "./partners": {
       "types": "./src/partners.ts",
       "default": "./src/partners.ts"
+    },
+    "./ratehawk": {
+      "types": "./src/ratehawk.ts",
+      "default": "./src/ratehawk.ts"
+    },
+    "./amadeus": {
+      "types": "./src/amadeus.ts",
+      "default": "./src/amadeus.ts"
     }
   },
   "scripts": {

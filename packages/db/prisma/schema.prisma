@@ -58,6 +58,8 @@ model Cardholder {
   cardAssignments   CardAssignment[]
   couponRedemptions CouponRedemption[]
   travelBookings    TravelBooking[]
+  hotelBookings     HotelBooking[]
+  flightBookings    FlightBooking[]
   purchases         CardPurchase[]
   partnerRatings    PartnerRating[]
 }
@@ -286,4 +288,67 @@ model TravelBooking {
 
   travelOffer TravelOffer @relation(fields: [travelOfferId], references: [id])
   cardholder  Cardholder  @relation(fields: [cardholderId], references: [id])
+}
+
+// ─── Real-Time Hotel Bookings (RateHawk) ─────────────────────────────────────
+
+enum HotelBookingStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+model HotelBooking {
+  id              String             @id @default(cuid())
+  cardholderId    String
+  provider        String             @default("ratehawk")
+  externalRef     String?
+  hotelId         String
+  hotelName       String
+  city            String             @default("")
+  checkin         String
+  checkout        String
+  adults          Int                @default(1)
+  roomName        String             @default("")
+  boardType       String             @default("room_only")
+  totalPrice      Decimal            @db.Decimal(10, 2)
+  currency        String             @default("EUR")
+  discountApplied Decimal            @default(0) @db.Decimal(5, 2)
+  status          HotelBookingStatus @default(CONFIRMED)
+  qrToken         String             @unique @default(cuid())
+  notes           String?
+  bookedAt        DateTime           @default(now())
+  cancelledAt     DateTime?
+  stripeRefundId  String?
+
+  cardholder Cardholder @relation(fields: [cardholderId], references: [id])
+}
+
+// ─── Flight Bookings (Amadeus) ────────────────────────────────────────────────
+
+enum FlightBookingStatus {
+  CONFIRMED
+  CANCELLED
+}
+
+model FlightBooking {
+  id              String              @id @default(cuid())
+  cardholderId    String
+  externalRef     String?
+  origin          String
+  destination     String
+  departureDate   String
+  returnDate      String?
+  airline         String              @default("")
+  flightNumbers   String              @default("")
+  adults          Int                 @default(1)
+  totalPrice      Decimal             @db.Decimal(10, 2)
+  currency        String              @default("EUR")
+  discountApplied Decimal             @default(0) @db.Decimal(5, 2)
+  status          FlightBookingStatus @default(CONFIRMED)
+  qrToken         String              @unique @default(cuid())
+  bookedAt        DateTime            @default(now())
+  cancelledAt     DateTime?
+  stripeRefundId  String?
+
+  cardholder Cardholder @relation(fields: [cardholderId], references: [id])
 }
