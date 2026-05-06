@@ -42,7 +42,7 @@ export default async function DashboardPage() {
         <div className="mt-8 rounded-lg border border-orange-200 bg-orange-50 p-6">
           <h2 className="font-semibold text-orange-800">Agenzia non configurata</h2>
           <p className="mt-1 text-sm text-orange-700">
-            Il tuo account non è ancora associato a un'agenzia partner. Contatta il supporto TipItaly per attivare l'accesso.
+            Il tuo account non è ancora associato a un&apos;agenzia partner. Contatta il supporto TipItaly per attivare l&apos;accesso.
           </p>
         </div>
       )}
