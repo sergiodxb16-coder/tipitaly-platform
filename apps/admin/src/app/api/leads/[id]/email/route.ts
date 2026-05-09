@@ -18,11 +18,12 @@ function supabase(path: string, init?: RequestInit) {
 // POST /api/leads/[id]/email — invia email outreach al lead
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
     // Recupera il lead da Supabase
-    const getRes = await supabase(`/B2bLead?id=eq.${params.id}`);
+    const getRes = await supabase(`/B2bLead?id=eq.${id}`);
     if (!getRes.ok) {
       return NextResponse.json({ error: "Errore DB" }, { status: 500 });
     }
@@ -52,7 +53,7 @@ export async function POST(
     });
 
     // Aggiorna lead su Supabase
-    const updateRes = await supabase(`/B2bLead?id=eq.${params.id}`, {
+    const updateRes = await supabase(`/B2bLead?id=eq.${id}`, {
       method: "PATCH",
       body: JSON.stringify({
         status: "CONTACTED",
