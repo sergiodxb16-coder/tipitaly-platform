@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCountryPricing } from "@tip-italy/db/purchases";
-import { SupportedCountry } from "@tip-italy/db/generated/client";
+import { SupportedCountry } from "@tip-italy/db";
 
 const VALID_COUNTRIES: SupportedCountry[] = ["IT", "GB", "CH"];
 
