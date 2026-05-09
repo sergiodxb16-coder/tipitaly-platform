@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { fulfillB2CPurchase } from "@tip-italy/db/purchases";
-import { CardLevel, SupportedCountry, SupportedCurrency } from "@tip-italy/db/generated/client";
+import { CardLevel, SupportedCountry, SupportedCurrency } from "@tip-italy/db";
 import { sendCardPurchasedEmail } from "@tip-italy/email";
 
 export async function POST(req: NextRequest) {
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     customerName,
   });
 
-  if (purchase.card && purchase.cardholder) {
+  if (purchase.card && purchase.cardholderId) {
     await sendCardPurchasedEmail({
       to: customerEmail,
       cardLevel,

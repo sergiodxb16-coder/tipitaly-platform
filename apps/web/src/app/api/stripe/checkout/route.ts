@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { stripe } from "@/lib/stripe";
+import type Stripe from "stripe";
 import { prisma } from "@tip-italy/db";
-import { SupportedCountry } from "@tip-italy/db/generated/client";
+import { SupportedCountry } from "@tip-italy/db";
 import { COUNTRY_CONFIG } from "@tip-italy/db/purchases";
 
 const CheckoutBody = z.object({
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
   const session = await stripe.checkout.sessions.create({
     mode: "payment",
     line_items: [{ price: pricing.stripePriceId, quantity: 1 }],
-    locale: config.stripeLocale as Parameters<typeof stripe.checkout.sessions.create>[0]["locale"],
+    locale: config.stripeLocale as Stripe.Checkout.SessionCreateParams["locale"],
     automatic_tax: { enabled: true },
     tax_id_collection: { enabled: true },
     metadata: {
