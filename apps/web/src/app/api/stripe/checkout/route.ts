@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { stripe } from "@/lib/stripe";
+import { getStripe } from "@/lib/stripe";
 import type Stripe from "stripe";
 import { prisma } from "@tip-italy/db";
 import { SupportedCountry } from "@tip-italy/db";
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
 
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000";
 
-  const session = await stripe.checkout.sessions.create({
+  const session = await getStripe().checkout.sessions.create({
     mode: "payment",
     line_items: [{ price: pricing.stripePriceId, quantity: 1 }],
     locale: config.stripeLocale as Stripe.Checkout.SessionCreateParams["locale"],
