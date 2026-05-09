@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stripe } from "@/lib/stripe";
+import { getStripe } from "@/lib/stripe";
 import { fulfillB2CPurchase } from "@tip-italy/db/purchases";
 import { CardLevel, SupportedCountry, SupportedCurrency } from "@tip-italy/db";
 import { sendCardPurchasedEmail } from "@tip-italy/email";
@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
 
   let event;
   try {
-    event = stripe.webhooks.constructEvent(body, sig!, secret);
+    event = getStripe().webhooks.constructEvent(body, sig!, secret);
   } catch {
     return NextResponse.json({ error: "Webhook signature invalid" }, { status: 400 });
   }
