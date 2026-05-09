@@ -343,6 +343,147 @@ export function isRateHawkConfigured(): boolean {
   );
 }
 
+// ─── Aviation Types ──────────────────────────────────────────────────────────
+// RateHawk B2B avia: stessa autenticazione/base URL degli hotel
+// Endpoint: POST /avia/search/  (verificare path esatto sulla sandbox)
+// Docs: https://www.ratehawk.com/my/settings/?tab=api (tab Aviation)
+
+export type RateHawkFlightSearchParams = {
+  origin: string;        // codice IATA (es. "FCO")
+  destination: string;   // codice IATA (es. "CDG")
+  departureDate: string; // "YYYY-MM-DD"
+  returnDate?: string;   // "YYYY-MM-DD" — se presente, ricerca andata/ritorno
+  adults?: number;       // default: 1
+  currency?: string;     // default: EUR
+  max?: number;          // max risultati, default: 10
+};
+
+export type RateHawkFlightOffer = {
+  id: string;
+  origin: string;
+  destination: string;
+  departureDate: string;
+  returnDate?: string;
+  airline: string;
+  flightNumbers: string;
+  duration: string;
+  stops: number;
+  adults: number;
+  totalPrice: number;
+  currency: string;
+  bookingClass: string;
+};
+
+// Raw avia response types
+type RawAviaSegment = {
+  departure_airport: string;
+  arrival_airport: string;
+  departure_at: string;        // ISO datetime
+  marketing_carrier: string;   // codice IATA compagnia
+  marketing_flight_number: string;
+  duration_minutes: number;
+  stops?: number;
+};
+
+type RawAviaOffer = {
+  id: string;
+  segments: RawAviaSegment[];
+  return_segments?: RawAviaSegment[];
+  total_duration_minutes: number;
+  stops: number;
+  price: { amount: string; currency_code: string };
+  fare_class: string;
+};
+
+type RawAviaSearchResponse = {
+  data: { offers: RawAviaOffer[] };
+  status: string;
+  error?: string | null;
+};
+
+const AIRLINE_NAMES: Record<string, string> = {
+  AZ: "ITA Airways", FR: "Ryanair", U2: "easyJet", VY: "Vueling",
+  LH: "Lufthansa", AF: "Air France", BA: "British Airways", KL: "KLM",
+  IB: "Iberia", TP: "TAP Air Portugal", EK: "Emirates", TK: "Turkish Airlines",
+  W6: "Wizz Air", EN: "Air Dolomiti", EW: "Eurowings",
+};
+
+function formatDurationMinutes(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+/**
+ * Cerca voli via RateHawk aviation (stessa API key degli hotel).
+ * Endpoint verificato sulla sandbox RateHawk: POST /avia/search/
+ */
+export async function searchFlights(
+  params: RateHawkFlightSearchParams
+): Promise<RateHawkFlightOffer[]> {
+  const segments: Array<{ departure_date: string; departure: string; arrival: string }> = [
+    {
+      departure_date: params.departureDate,
+      departure: params.origin.toUpperCase(),
+      arrival: params.destination.toUpperCase(),
+    },
+  ];
+
+  if (params.returnDate) {
+    segments.push({
+      departure_date: params.returnDate,
+      departure: params.destination.toUpperCase(),
+      arrival: params.origin.toUpperCase(),
+    });
+  }
+
+  const body = {
+    segments,
+    passengers: { adults: params.adults ?? 1, children: 0, infants: 0 },
+    currency: params.currency ?? "EUR",
+    language: "it",
+    residency: "it",
+    trip_class: "economy",
+    limit: params.max ?? 10,
+  };
+
+  const raw = await ratehawkPost<RawAviaSearchResponse>("/avia/search/", body);
+
+  if (raw.status !== "ok" || raw.error) {
+    throw new Error(`RateHawk avia search error: ${raw.error ?? raw.status}`);
+  }
+
+  const offers = raw.data?.offers ?? [];
+
+  return offers.slice(0, params.max ?? 10).map((o): RateHawkFlightOffer => {
+    const firstSeg = o.segments[0];
+    const lastSeg = o.segments[o.segments.length - 1];
+    const returnSeg = o.return_segments?.[0];
+
+    const flightNums = o.segments
+      .map((s) => `${s.marketing_carrier}${s.marketing_flight_number}`)
+      .join(", ");
+
+    const airlineName = AIRLINE_NAMES[firstSeg.marketing_carrier] ?? firstSeg.marketing_carrier;
+
+    return {
+      id: o.id,
+      origin: firstSeg.departure_airport,
+      destination: lastSeg.arrival_airport,
+      departureDate: firstSeg.departure_at.slice(0, 10),
+      returnDate: returnSeg ? returnSeg.departure_at.slice(0, 10) : undefined,
+      airline: airlineName,
+      flightNumbers: flightNums,
+      duration: formatDurationMinutes(o.total_duration_minutes),
+      stops: o.stops,
+      adults: params.adults ?? 1,
+      totalPrice: parseFloat(o.price.amount),
+      currency: o.price.currency_code,
+      bookingClass: o.fare_class ?? "ECONOMY",
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Helpers di formattazione
 // ---------------------------------------------------------------------------
@@ -369,4 +510,8 @@ export function formatPrice(amount: number, currency: string): string {
     currency,
     maximumFractionDigits: 0,
   }).format(amount);
+}
+
+export function formatFlightPrice(amount: number, currency: string): string {
+  return formatPrice(amount, currency);
 }

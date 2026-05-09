@@ -48,7 +48,7 @@ enum AssignmentSource {
 // End-user who holds a card; linked to Supabase Auth
 model Cardholder {
   id          String   @id @default(cuid())
-  supabaseUid String   @unique
+  supabaseUid String?  @unique
   email       String   @unique
   nome        String
   cognome     String
@@ -323,7 +323,7 @@ model HotelBooking {
   cardholder Cardholder @relation(fields: [cardholderId], references: [id])
 }
 
-// ─── Flight Bookings (Amadeus) ────────────────────────────────────────────────
+// ─── Flight Bookings (RateHawk Aviation) ─────────────────────────────────────
 
 enum FlightBookingStatus {
   CONFIRMED
@@ -351,4 +351,42 @@ model FlightBooking {
   stripeRefundId  String?
 
   cardholder Cardholder @relation(fields: [cardholderId], references: [id])
+}
+
+// ─── Agent 01 — B2B Lead Generation ─────────────────────────────────────────
+
+enum B2bLeadStatus {
+  NEW        // appena inserito
+  CONTACTED  // email outreach inviata
+  QUALIFIED  // ha risposto / interesse confermato
+  CONVERTED  // diventato Company cliente
+  LOST       // non interessato
+}
+
+enum CompanySize {
+  MICRO      // 1-9 dipendenti
+  SMALL      // 10-49
+  MEDIUM     // 50-249
+  LARGE      // 250+
+}
+
+// Prospect B2B per Agent 01 — gestione lead e outreach automatizzato
+model B2bLead {
+  id             String        @id @default(cuid())
+  ragioneSociale String
+  pIva           String?       @unique
+  emailReferente String
+  nomeReferente  String?
+  ruoloReferente String?       // es. "HR Manager", "CEO"
+  settore        String?       // es. "Moda", "Finanza", "Tech"
+  dimensione     CompanySize?
+  sitoWeb        String?
+  citta          String?
+  status         B2bLeadStatus @default(NEW)
+  notes          String?       @db.Text
+  emailSentAt    DateTime?
+  emailSubject   String?
+  convertedAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 }

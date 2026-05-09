@@ -20,7 +20,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/auth/login?error=${encodeURIComponent(error?.message ?? "Link scaduto o non valido")}`);
   }
 
-  await syncCardholder(data.user);
+  try {
+    await syncCardholder(data.user);
+  } catch (err) {
+    console.error("[auth/confirm] syncCardholder error:", err);
+  }
 
   return NextResponse.redirect(`${origin}${next}`);
 }

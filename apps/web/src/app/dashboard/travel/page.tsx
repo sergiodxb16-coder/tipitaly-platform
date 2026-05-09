@@ -3,16 +3,13 @@ import { prisma } from "@tip-italy/db";
 import {
   isRateHawkConfigured,
   searchHotels,
+  searchFlights,
   formatPrice,
+  formatFlightPrice,
   formatStars,
   type RateHawkHotel,
+  type RateHawkFlightOffer,
 } from "@tip-italy/db/ratehawk";
-import {
-  isAmadeusConfigured,
-  searchFlights,
-  formatFlightPrice,
-  type AmadeusFlightOffer,
-} from "@tip-italy/db/amadeus";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { CardLevel } from "@tip-italy/db";
@@ -164,7 +161,7 @@ function FlightCard({
   offer,
   cardLevel,
 }: {
-  offer: AmadeusFlightOffer;
+  offer: RateHawkFlightOffer;
   cardLevel: string;
 }) {
   const discountPct = TIER_DISCOUNT[cardLevel] ?? 0;
@@ -212,7 +209,7 @@ function BookFlightButton({
   discountedPrice,
   discountPct,
 }: {
-  offer: AmadeusFlightOffer;
+  offer: RateHawkFlightOffer;
   discountedPrice: number;
   discountPct: number;
 }) {
@@ -501,7 +498,7 @@ export default async function TravelPage({
   const flightAdults = Math.max(1, parseInt(sp.flightAdults ?? "1", 10) || 1);
 
   const hotelApiReady = isRateHawkConfigured();
-  const flightApiReady = isAmadeusConfigured();
+  const flightApiReady = isRateHawkConfigured();
 
   // Hotel search
   let hotels: RateHawkHotel[] = [];
@@ -519,7 +516,7 @@ export default async function TravelPage({
   }
 
   // Flight search
-  let flights: AmadeusFlightOffer[] = [];
+  let flights: RateHawkFlightOffer[] = [];
   let flightError: string | null = null;
   const didFlightSearch =
     isCardActive &&
@@ -539,7 +536,7 @@ export default async function TravelPage({
         max: 10,
       });
     } catch (err) {
-      console.error("[Amadeus] Errore ricerca:", err);
+      console.error("[RateHawk avia] Errore ricerca:", err);
       flightError = "Impossibile recuperare i voli. Riprova tra qualche istante.";
     }
   }

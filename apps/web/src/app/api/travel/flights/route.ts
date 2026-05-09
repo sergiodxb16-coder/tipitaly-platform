@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@tip-italy/db";
-import { formatFlightPrice } from "@tip-italy/db/amadeus";
+import { formatFlightPrice } from "@tip-italy/db/ratehawk";
 import { sendTravelBookingEmail } from "@tip-italy/email";
 import QRCode from "qrcode";
 

@@ -18,7 +18,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/auth/login?error=${encodeURIComponent(error?.message ?? "Errore di autenticazione")}`);
   }
 
-  await syncCardholder(data.user);
+  try {
+    await syncCardholder(data.user);
+  } catch (err) {
+    // Log ma non blocca — l'utente entra comunque, il sync verrà ritentato al prossimo accesso
+    console.error("[auth/callback] syncCardholder error:", err);
+  }
 
   return NextResponse.redirect(`${origin}${next}`);
 }

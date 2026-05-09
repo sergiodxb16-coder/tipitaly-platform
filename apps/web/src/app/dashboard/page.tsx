@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@tip-italy/db";
-import { getCardForCardholder } from "@tip-italy/db/cards";
-import { getFeaturedPartners } from "@tip-italy/db/partners";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { CardLevel, CardStatus } from "@tip-italy/db";
 import { CardStatusWidget } from "@/components/card-status-widget";
 import { BenefitsGrid } from "@/components/benefits-grid";
 import { redirect } from "next/navigation";
@@ -13,6 +12,16 @@ interface DashboardPageProps {
 
 export const metadata = { title: "Dashboard — TipItaly Card" };
 
+/** Shape of the Card row returned by Supabase */
+interface CardRow {
+  id: string;
+  serialNumber: string;
+  level: CardLevel;
+  status: CardStatus;
+  expiresAt: string | null;
+  activatedAt: string | null;
+}
+
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
   const supabase = await createClient();
   const {
@@ -22,12 +31,60 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   if (!user) redirect("/auth/login");
 
   const params = await searchParams;
+  const admin = createAdminClient();
 
-  const cardholder = await prisma.cardholder.findUnique({ where: { supabaseUid: user.id } });
+  // 1. Look up the Cardholder linked to this Supabase auth user
+  const { data: cardholder, error: cardholderError } = await admin
+    .from("Cardholder")
+    .select("id, email, nome, cognome")
+    .eq("supabaseUid", user.id)
+    .maybeSingle();
+
+  if (cardholderError) {
+    console.error("[dashboard] cardholder lookup error:", cardholderError);
+  }
   if (!cardholder) redirect("/auth/login");
 
-  const assignment = await getCardForCardholder(cardholder.id);
-  const featuredPartners = await getFeaturedPartners(6);
+  // 2. Look up the most recent CardAssignment with the related Card record
+  const { data: assignmentRow } = await admin
+    .from("CardAssignment")
+    .select("id, cardholderId, assignedAt, Card(*)")
+    .eq("cardholderId", cardholder.id)
+    .order("assignedAt", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // Supabase PostgREST returns the FK-joined row under the table name key
+  const cardRow = assignmentRow?.Card as CardRow | null | undefined;
+  const assignment = assignmentRow && cardRow
+    ? {
+        ...assignmentRow,
+        card: {
+          ...cardRow,
+          level: cardRow.level as CardLevel,
+          status: cardRow.status as CardStatus,
+          expiresAt: cardRow.expiresAt ? new Date(cardRow.expiresAt) : null,
+          activatedAt: cardRow.activatedAt ? new Date(cardRow.activatedAt) : null,
+        },
+      }
+    : null;
+
+  // 3. Look up featured Partners with ratings for computing ratingMedia
+  const { data: partnerRows } = await admin
+    .from("Partner")
+    .select("id, nome, slug, logoUrl, categoria, citta, isFeatured, featuredOrder, PartnerRating(stelle)")
+    .eq("isActive", true)
+    .eq("isFeatured", true)
+    .order("featuredOrder", { ascending: true })
+    .limit(6);
+
+  const featuredPartners = (partnerRows ?? []).map((p) => {
+    const ratings = (p.PartnerRating ?? []) as Array<{ stelle: number }>;
+    const ratingCount = ratings.length;
+    const ratingMedia =
+      ratingCount > 0 ? ratings.reduce((s, r) => s + r.stelle, 0) / ratingCount : null;
+    return { ...p, ratingMedia, ratingCount };
+  });
 
   return (
     <main className="min-h-screen bg-gray-50">

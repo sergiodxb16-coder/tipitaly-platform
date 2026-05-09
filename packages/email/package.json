@@ -9,7 +9,7 @@
     }
   },
   "scripts": {
-    "dev": "email dev --port 3002",
+    "dev": "email dev --dir src --port 3002",
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit"
   },

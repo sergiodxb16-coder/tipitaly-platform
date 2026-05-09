@@ -11,6 +11,7 @@ const PUBLIC_PATHS = [
   "/api/pricing",
   "/api/stripe/checkout",
   "/api/stripe/webhook",
+  "/api/dev/login", // DEV ONLY — bypassa il rate limit email in sviluppo
 ];
 
 export async function middleware(request: NextRequest) {
