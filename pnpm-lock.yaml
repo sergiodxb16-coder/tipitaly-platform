@@ -26,6 +26,9 @@ importers:
       '@tip-italy/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@tip-italy/email':
+        specifier: workspace:*
+        version: link:../../packages/email
       '@tip-italy/ui':
         specifier: workspace:*
         version: link:../../packages/ui
