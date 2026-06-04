@@ -1,11 +1,13 @@
 /**
- * DEV-ONLY: login rapido senza email per aggirare il rate limit di Supabase in sviluppo.
- * Questa route è DISABILITATA in produzione.
+ * DEV/PREVIEW-ONLY: login rapido senza email per aggirare il rate limit di Supabase
+ * in sviluppo e per le demo sui deploy di preview Vercel.
+ * Questa route è DISABILITATA in produzione (VERCEL_ENV === "production").
  *
  * Strategia: imposta una password temporanea sull'utente via admin API, poi fa signInWithPassword.
  * Non usa magic link → nessun rate limit email.
  *
  * Uso: GET http://localhost:3000/api/dev/login?email=tua@email.it
+ *      GET https://<preview>.vercel.app/api/dev/login?email=demo@tipitaly.it
  */
 import { createClient } from "@supabase/supabase-js";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
@@ -14,7 +16,9 @@ import { NextResponse, type NextRequest } from "next/server";
 const DEV_PASSWORD = "TipItaly_Dev_2024!";
 
 export async function GET(request: NextRequest) {
-  if (process.env.NODE_ENV !== "development") {
+  const isDev = process.env.NODE_ENV === "development";
+  const isVercelPreview = process.env.VERCEL_ENV === "preview";
+  if (!isDev && !isVercelPreview) {
     return NextResponse.json({ error: "Not available in production" }, { status: 403 });
   }
 
