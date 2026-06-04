@@ -176,6 +176,14 @@ function MessageBubble({ msg }: { msg: Message }) {
 
 /* ─── Pagina principale ──────────────────────────────────────── */
 export default function TipaPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <TipaContent />
+    </React.Suspense>
+  );
+}
+
+function TipaContent() {
   const tc = useTranslations("concierge");
   const locale = useLocale();
   const searchParams = useSearchParams();

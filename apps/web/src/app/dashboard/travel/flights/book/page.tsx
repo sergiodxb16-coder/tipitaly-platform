@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Suspense, useState, useTransition } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -13,6 +13,14 @@ function formatPrice(amount: number, currency: string): string {
 }
 
 export default function FlightBookPage() {
+  return (
+    <Suspense fallback={null}>
+      <FlightBookContent />
+    </Suspense>
+  );
+}
+
+function FlightBookContent() {
   const sp = useSearchParams();
   const router = useRouter();
 

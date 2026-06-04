@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { Suspense, useEffect, useState, useTransition } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -55,6 +55,14 @@ const BOARD_LABELS: Record<string, string> = {
 };
 
 export default function HotelDetailPage() {
+  return (
+    <Suspense fallback={null}>
+      <HotelDetailContent />
+    </Suspense>
+  );
+}
+
+function HotelDetailContent() {
   const params = useParams();
   const sp = useSearchParams();
   const router = useRouter();

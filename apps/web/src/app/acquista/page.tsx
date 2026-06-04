@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 type CardLevel = "WHITE" | "GOLD" | "PLATINUM";
@@ -51,6 +51,14 @@ function formatPrice(amount: number, currency: string, country: Country): string
 }
 
 export default function AcquistaPage() {
+  return (
+    <Suspense fallback={null}>
+      <AcquistaContent />
+    </Suspense>
+  );
+}
+
+function AcquistaContent() {
   const searchParams = useSearchParams();
   const cancelled = searchParams.get("cancelled") === "true";
 
