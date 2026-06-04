@@ -8,7 +8,7 @@
  * Uso: GET http://localhost:3000/api/dev/login?email=tua@email.it
  */
 import { createClient } from "@supabase/supabase-js";
-import { createServerClient } from "@supabase/ssr";
+import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 const DEV_PASSWORD = "TipItaly_Dev_2024!";
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
   const serverClient = createServerClient(supabaseUrl, anonKey, {
     cookies: {
       getAll() { return request.cookies.getAll(); },
-      setAll(cookiesToSet) {
+      setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
         cookiesToSet.forEach(({ name, value, options }) => {
           redirectResponse.cookies.set(name, value, options);
         });
