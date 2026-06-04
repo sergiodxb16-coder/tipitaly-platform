@@ -329,7 +329,8 @@ export default function TipaPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SR: any =
       typeof window !== "undefined"
-        ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+        ? // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
         : undefined;
 
     if (!SR) {
