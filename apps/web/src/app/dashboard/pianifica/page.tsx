@@ -294,7 +294,7 @@ export default function PianificaPage() {
           </div>
           {partenza && (
             <p className="mt-1.5 text-[11px] text-gray-600">
-              Sofia includerà volo o treno da <span className="text-orange-400">{partenza}</span> nell'itinerario
+              Sofia includerà volo o treno da <span className="text-orange-400">{partenza}</span> nell&apos;itinerario
             </p>
           )}
         </section>
