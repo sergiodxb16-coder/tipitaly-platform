@@ -1,28 +1,291 @@
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { CardLevel, CardStatus } from "@tip-italy/db";
-import { CardStatusWidget } from "@/components/card-status-widget";
-import { BenefitsGrid } from "@/components/benefits-grid";
 import { redirect } from "next/navigation";
-import Link from "next/link";
+import { DashboardClient } from "./DashboardClient";
+import type { Suggestion, FlashDeal } from "./DashboardClient";
 
-interface DashboardPageProps {
-  searchParams: Promise<{ activated?: string }>;
+export const metadata = { title: "Dashboard — TipItaly" };
+
+/* ─── Tipo profilo gusti ─────────────────────────────────────── */
+interface TasteProfile {
+  luoghi?: string[] | string;
+  destinazioni?: string;
+  esperienze?: string | string[];
+  compagnia?: string;
+  budget?: string;
+  completedAt?: string;
+  version?: number;
 }
 
-export const metadata = { title: "Dashboard — TipItaly Card" };
+/* ─── Libreria suggerimenti per area ────────────────────────── */
+const SUGGESTION_LIBRARY: Record<string, Suggestion[]> = {
+  sardegna: [
+    {
+      id: "sar-1",
+      type: "hotel",
+      title: "Mezzatorre Resort & Spa",
+      subtitle: "5 stelle sul mare",
+      location: "Sardegna Nord, Olbia",
+      emoji: "🏖️",
+      image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80",
+      reason: "Spiaggia privata con acque cristalline, ideale per chi ama il mare senza folla.",
+      originalPrice: 480,
+      goldPrice: 289,
+      discountPct: 40,
+      badge: "Mare cristallino",
+    },
+    {
+      id: "sar-2",
+      type: "hotel",
+      title: "Is Morus Relais",
+      subtitle: "Boutique sul Golfo",
+      location: "Santa Margherita di Pula, Cagliari",
+      emoji: "🌅",
+      image: "https://images.unsplash.com/photo-1544551763-46a013bb70d5?w=800&q=80",
+      reason: "Archittura sarda autentica tra pinete e mare. Quiete assoluta.",
+      originalPrice: 310,
+      goldPrice: 198,
+      discountPct: 36,
+    },
+  ],
+  sicilia: [
+    {
+      id: "sic-1",
+      type: "experience",
+      title: "Cena privata in Villa del Settecento",
+      subtitle: "Esperienza esclusiva",
+      location: "Palermo, Sicilia",
+      emoji: "🏛️",
+      image: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=80",
+      reason: "Solo 8 ospiti a tavola in un palazzo barocco — il cuoco è stellato.",
+      originalPrice: 290,
+      goldPrice: 175,
+      discountPct: 40,
+      spotsLeft: 3,
+      badge: "Solo 3 posti",
+    },
+  ],
+  toscana: [
+    {
+      id: "tos-1",
+      type: "hotel",
+      title: "Borgo San Felice",
+      subtitle: "Relais & Châteaux nel Chianti",
+      location: "Castelnuovo Berardenga, Siena",
+      emoji: "🍷",
+      image: "https://images.unsplash.com/photo-1474722883778-792e7990302f?w=800&q=80",
+      reason: "Un borgo del 1200 convertito in resort. Vigneti a perdita d'occhio, cantina privata.",
+      originalPrice: 420,
+      goldPrice: 252,
+      discountPct: 40,
+      badge: "Chianti autentico",
+    },
+    {
+      id: "tos-2",
+      type: "experience",
+      title: "Terme di Saturnia",
+      subtitle: "Wellness resort",
+      location: "Saturnia, Grosseto",
+      emoji: "♨️",
+      image: "https://images.unsplash.com/photo-1544161515-4ab6ce6db874?w=800&q=80",
+      reason: "Terme naturali a 37°C tra le colline della Maremma. Spa all'aperto unica in Europa.",
+      originalPrice: 380,
+      goldPrice: 228,
+      discountPct: 40,
+    },
+  ],
+  venezia: [
+    {
+      id: "ven-1",
+      type: "experience",
+      title: "Cena al Palazzo Dandolo",
+      subtitle: "Evento privato esclusivo",
+      location: "Venezia, Riva degli Schiavoni",
+      emoji: "🕯️",
+      image: "https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?w=800&q=80",
+      reason: "Palazzo del '700 aperto solo per i nostri ospiti. Gondola privata inclusa.",
+      originalPrice: 380,
+      goldPrice: 228,
+      discountPct: 40,
+      spotsLeft: 4,
+      badge: "Evento esclusivo",
+    },
+  ],
+  roma: [
+    {
+      id: "rom-1",
+      type: "hotel",
+      title: "Hotel de Russie",
+      subtitle: "5 stelle Rocco Forte",
+      location: "Roma, Via del Babuino",
+      emoji: "🏛️",
+      image: "https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=800&q=80",
+      reason: "A 200 metri da Piazza del Popolo. Giardino segreto in piena Roma.",
+      originalPrice: 560,
+      goldPrice: 336,
+      discountPct: 40,
+    },
+  ],
+  amalfi: [
+    {
+      id: "ama-1",
+      type: "hotel",
+      title: "Monastero Santa Rosa",
+      subtitle: "Hotel & Spa",
+      location: "Conca dei Marini, Costiera Amalfitana",
+      emoji: "🌊",
+      image: "https://images.unsplash.com/photo-1533105079780-92b9be482077?w=800&q=80",
+      reason: "Ex convento del 1600 sulla scogliera. Infinity pool sospesa sul mare.",
+      originalPrice: 640,
+      goldPrice: 384,
+      discountPct: 40,
+      badge: "Vista Costiera",
+    },
+  ],
+  dolomiti: [
+    {
+      id: "dol-1",
+      type: "hotel",
+      title: "Rosa Alpina Hotel & Spa",
+      subtitle: "San Cassiano, Alta Badia",
+      location: "San Cassiano, Dolomiti",
+      emoji: "⛰️",
+      image: "https://images.unsplash.com/photo-1548777123-e216912df7d8?w=800&q=80",
+      reason: "Ristorante stellato St. Hubertus incluso. Paesaggio UNESCO a colazione.",
+      originalPrice: 510,
+      goldPrice: 306,
+      discountPct: 40,
+    },
+  ],
+};
 
-/** Shape of the Card row returned by Supabase */
-interface CardRow {
-  id: string;
-  serialNumber: string;
-  level: CardLevel;
-  status: CardStatus;
-  expiresAt: string | null;
-  activatedAt: string | null;
+/* ─── Suggerimenti generici (fallback) ──────────────────────── */
+const DEFAULT_SUGGESTIONS: Suggestion[] = [
+  {
+    id: "def-1",
+    type: "hotel",
+    title: "Borgo San Felice",
+    subtitle: "Relais & Châteaux nel Chianti",
+    location: "Castelnuovo Berardenga, Siena",
+    emoji: "🍷",
+    image: "https://images.unsplash.com/photo-1474722883778-792e7990302f?w=800&q=80",
+    reason: "Un borgo medievale tra i vigneti del Chianti Classico. Cantina privata inclusa.",
+    originalPrice: 420,
+    goldPrice: 252,
+    discountPct: 40,
+    badge: "Top Italia",
+  },
+  {
+    id: "def-2",
+    type: "hotel",
+    title: "Mezzatorre Resort & Spa",
+    subtitle: "5 stelle sul mare",
+    location: "Sardegna Nord, Olbia",
+    emoji: "🏖️",
+    image: "https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80",
+    reason: "Spiaggia privata con acque turchesi. Transfer incluso dall'aeroporto.",
+    originalPrice: 480,
+    goldPrice: 289,
+    discountPct: 40,
+    badge: "Più prenotato",
+  },
+  {
+    id: "def-3",
+    type: "experience",
+    title: "Cena al Palazzo Dandolo",
+    subtitle: "Evento privato esclusivo",
+    location: "Venezia, Riva degli Schiavoni",
+    emoji: "🕯️",
+    image: "https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?w=800&q=80",
+    reason: "Palazzo del '700 riaperto solo per i nostri soci. Solo 8 coperti.",
+    originalPrice: 380,
+    goldPrice: 228,
+    discountPct: 40,
+    spotsLeft: 3,
+    badge: "Quasi esaurito",
+  },
+  {
+    id: "def-4",
+    type: "hotel",
+    title: "Monastero Santa Rosa",
+    subtitle: "Hotel & Spa sulla Costiera",
+    location: "Conca dei Marini, Amalfi",
+    emoji: "🌊",
+    image: "https://images.unsplash.com/photo-1533105079780-92b9be482077?w=800&q=80",
+    reason: "Infinity pool sospesa sul Tirreno. Ex convento del 1600.",
+    originalPrice: 640,
+    goldPrice: 384,
+    discountPct: 40,
+    badge: "Esclusivo",
+  },
+];
+
+/* ─── Flash deal fisso (aggiornabile) ──────────────────────── */
+const FLASH_DEAL: FlashDeal = {
+  id: "flash-1",
+  type: "experience",
+  title: "Terme di Saturnia — Weekend Benessere",
+  subtitle: "2 notti in suite + spa illimitata",
+  location: "Saturnia, Grosseto",
+  emoji: "♨️",
+  reason: "Sorgenti termali naturali a 37°C, fango terapeutico, ristorante gourmet.",
+  originalPrice: 760,
+  goldPrice: 380,
+  discountPct: 50,
+  deadlineIso: new Date(Date.now() + 11 * 3_600_000 + 23 * 60_000).toISOString(), // ~11h da ora
+};
+
+/* ─── Featured fisso per il weekend ────────────────────────── */
+const FEATURED: Suggestion = {
+  id: "feat-1",
+  type: "experience",
+  title: "Cena al Palazzo Dandolo",
+  subtitle: "Evento serale esclusivo",
+  location: "Venezia — Riva degli Schiavoni",
+  emoji: "🕯️",
+  image: "https://images.unsplash.com/photo-1523906834658-6e24ef2386f9?w=800&q=80",
+  reason: "Palazzo veneziano del '700 aperto solo per i nostri soci. Menu degustazione 7 portate con sommelier.",
+  originalPrice: 380,
+  goldPrice: 228,
+  discountPct: 40,
+  spotsLeft: 4,
+};
+
+/* ─── Genera suggerimenti dal profilo ───────────────────────── */
+function buildSuggestions(tasteProfile: TasteProfile): Suggestion[] {
+  const raw =
+    tasteProfile.destinazioni ??
+    (Array.isArray(tasteProfile.luoghi)
+      ? tasteProfile.luoghi.join(" ")
+      : tasteProfile.luoghi ?? "");
+
+  const dest = raw.toLowerCase();
+
+  const collected: Suggestion[] = [];
+  const keys = Object.keys(SUGGESTION_LIBRARY);
+
+  for (const key of keys) {
+    if (dest.includes(key)) {
+      collected.push(...SUGGESTION_LIBRARY[key]);
+    }
+    if (collected.length >= 4) break;
+  }
+
+  // Se non abbastanza, aggiungi dal default
+  if (collected.length < 3) {
+    for (const s of DEFAULT_SUGGESTIONS) {
+      if (!collected.find((c) => c.id === s.id)) {
+        collected.push(s);
+        if (collected.length >= 4) break;
+      }
+    }
+  }
+
+  return collected.slice(0, 4);
 }
 
-export default async function DashboardPage({ searchParams }: DashboardPageProps) {
+/* ─── Pagina principale ─────────────────────────────────────── */
+export default async function DashboardPage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -30,177 +293,51 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   if (!user) redirect("/auth/login");
 
-  const params = await searchParams;
   const admin = createAdminClient();
 
-  // 1. Look up the Cardholder linked to this Supabase auth user
-  const { data: cardholder, error: cardholderError } = await admin
+  // 1. Cardholder
+  const { data: cardholder, error: chErr } = await admin
     .from("Cardholder")
-    .select("id, email, nome, cognome")
+    .select("id, email, nome, cognome, tasteProfile, onboardingCompleted")
     .eq("supabaseUid", user.id)
     .maybeSingle();
 
-  if (cardholderError) {
-    console.error("[dashboard] cardholder lookup error:", cardholderError);
-  }
-  if (!cardholder) redirect("/auth/login");
+  if (chErr) console.error("[dashboard] cardholder error:", chErr);
+  if (!cardholder) redirect("/onboarding"); // NON rimandare a /auth/login — crea un loop con il middleware
 
-  // 2. Look up the most recent CardAssignment with the related Card record
+  // 2. Se onboarding non completato → redirect
+  if (!cardholder.onboardingCompleted) redirect("/onboarding");
+
+  // 3. Card assignment
   const { data: assignmentRow } = await admin
     .from("CardAssignment")
-    .select("id, cardholderId, assignedAt, Card(*)")
+    .select("id, Card(id, serialNumber, level, status, expiresAt, activatedAt)")
     .eq("cardholderId", cardholder.id)
     .order("assignedAt", { ascending: false })
     .limit(1)
     .maybeSingle();
 
-  // Supabase PostgREST returns the FK-joined row under the table name key
-  const cardRow = assignmentRow?.Card as CardRow | null | undefined;
-  const assignment = assignmentRow && cardRow
-    ? {
-        ...assignmentRow,
-        card: {
-          ...cardRow,
-          level: cardRow.level as CardLevel,
-          status: cardRow.status as CardStatus,
-          expiresAt: cardRow.expiresAt ? new Date(cardRow.expiresAt) : null,
-          activatedAt: cardRow.activatedAt ? new Date(cardRow.activatedAt) : null,
-        },
-      }
-    : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const card = assignmentRow?.Card as any;
+  const cardActive: boolean = card?.status === "ACTIVE";
+  const cardLevel: string | null = card?.level ?? null;
 
-  // 3. Look up featured Partners with ratings for computing ratingMedia
-  const { data: partnerRows } = await admin
-    .from("Partner")
-    .select("id, nome, slug, logoUrl, categoria, citta, isFeatured, featuredOrder, PartnerRating(stelle)")
-    .eq("isActive", true)
-    .eq("isFeatured", true)
-    .order("featuredOrder", { ascending: true })
-    .limit(6);
+  // 4. Taste profile
+  const tasteProfile: TasteProfile = (cardholder.tasteProfile as TasteProfile) ?? {};
 
-  const featuredPartners = (partnerRows ?? []).map((p) => {
-    const ratings = (p.PartnerRating ?? []) as Array<{ stelle: number }>;
-    const ratingCount = ratings.length;
-    const ratingMedia =
-      ratingCount > 0 ? ratings.reduce((s, r) => s + r.stelle, 0) / ratingCount : null;
-    return { ...p, ratingMedia, ratingCount };
-  });
+  // 5. Suggerimenti curati
+  const suggestions = buildSuggestions(tasteProfile);
 
   return (
-    <main className="min-h-screen bg-gray-50">
-      <header className="border-b border-gray-200 bg-white px-6 py-4">
-        <div className="mx-auto flex max-w-4xl items-center justify-between">
-          <h1 className="text-xl font-bold text-orange-600">TipItaly Card</h1>
-          <div className="flex items-center gap-4">
-            <span className="hidden text-sm text-gray-500 sm:block">{cardholder.email}</span>
-            <form action="/auth/signout" method="POST">
-              <button
-                type="submit"
-                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
-              >
-                Esci
-              </button>
-            </form>
-          </div>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-4xl px-6 py-8 space-y-8">
-        {params.activated && (
-          <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
-            🎉 Card attivata con successo! Benvenuto nei tuoi vantaggi esclusivi.
-          </div>
-        )}
-
-        {!assignment ? (
-          <div className="rounded-xl border border-dashed border-orange-300 bg-orange-50 p-8 text-center">
-            <p className="text-lg font-semibold text-orange-700">Nessuna card attivata</p>
-            <p className="mt-2 text-sm text-orange-600">
-              Hai ricevuto la tua TipItaly Card? Attivala ora per accedere ai vantaggi.
-            </p>
-            <Link
-              href="/attivazione"
-              className="mt-4 inline-block rounded-lg bg-orange-600 px-6 py-2 text-sm font-semibold text-white hover:bg-orange-700"
-            >
-              Attiva la card →
-            </Link>
-          </div>
-        ) : (
-          <>
-            <section>
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500">
-                La tua Card
-              </h2>
-              <CardStatusWidget
-                level={assignment.card.level}
-                status={assignment.card.status}
-                serialNumber={assignment.card.serialNumber}
-                expiresAt={assignment.card.expiresAt}
-                activatedAt={assignment.card.activatedAt}
-              />
-            </section>
-
-            <section>
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-gray-500">
-                I tuoi Vantaggi
-              </h2>
-              <BenefitsGrid level={assignment.card.level} />
-            </section>
-          </>
-        )}
-
-        {featuredPartners.length > 0 && (
-          <section>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500">
-                Partner in evidenza
-              </h2>
-              <Link href="/dashboard/partner" className="text-xs text-orange-600 hover:underline">
-                Vedi tutti →
-              </Link>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {featuredPartners.map((p) => (
-                <Link
-                  key={p.id}
-                  href={`/partner/${p.slug ?? p.id}`}
-                  className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm hover:border-orange-200 transition-colors"
-                >
-                  {p.logoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={p.logoUrl}
-                      alt={p.nome}
-                      className="h-10 w-10 rounded-lg object-contain shrink-0 border border-gray-100"
-                    />
-                  ) : (
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-50 text-xl shrink-0">
-                      🏪
-                    </div>
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 truncate">{p.nome}</p>
-                    <p className="text-xs text-gray-400 truncate">
-                      {p.citta ?? p.categoria}
-                      {p.ratingMedia ? ` · ⭐ ${p.ratingMedia.toFixed(1)}` : ""}
-                    </p>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </section>
-        )}
-
-        <section className="rounded-xl border border-gray-100 bg-white p-5">
-          <h2 className="text-sm font-semibold text-gray-700">Il tuo Profilo</h2>
-          <p className="mt-1 text-sm text-gray-500">
-            {cardholder.nome} {cardholder.cognome} — {cardholder.email}
-          </p>
-          <Link href="/profilo" className="mt-2 inline-block text-xs text-orange-600 hover:underline">
-            Modifica profilo →
-          </Link>
-        </section>
-      </div>
-    </main>
+    <DashboardClient
+      nome={cardholder.nome ?? ""}
+      genere={null} // TODO: aggiungere campo genere al Cardholder e leggerlo qui
+      tasteProfile={tasteProfile}
+      cardActive={cardActive}
+      cardLevel={cardLevel}
+      suggestions={suggestions}
+      featured={FEATURED}
+      flash={FLASH_DEAL}
+    />
   );
 }

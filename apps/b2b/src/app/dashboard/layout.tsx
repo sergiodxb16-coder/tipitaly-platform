@@ -3,6 +3,7 @@ import { signOut } from "@/app/auth/login/actions";
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Panoramica" },
+  { href: "/dashboard/team", label: "Team" },
   { href: "/dashboard/prenotazioni", label: "Prenotazioni" },
   { href: "/dashboard/fatturazione", label: "Fatturazione" },
   { href: "/dashboard/carte", label: "Gestione Carte" },

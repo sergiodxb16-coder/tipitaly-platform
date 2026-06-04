@@ -8,7 +8,7 @@
  * Uso: GET http://localhost:3000/api/dev/login?email=tua@email.it
  */
 import { createClient } from "@supabase/supabase-js";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 const DEV_PASSWORD = "TipItaly_Dev_2024!";
@@ -65,12 +65,28 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 2. Fai signInWithPassword — nessuna email inviata, nessun rate limit
-  const regularClient = createClient(supabaseUrl, anonKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
+  // 2. Crea la redirect response prima del sign-in, così i cookie vengono scritti su di essa
+  // Usa l'header Host reale (es. 192.168.1.45:3000 da telefono) — request.url in dev
+  // viene normalizzato a localhost e romperebbe l'accesso da altri dispositivi.
+  const next = request.nextUrl.searchParams.get("next") ?? "/dashboard";
+  const host = request.headers.get("host") ?? request.nextUrl.host;
+  const proto = request.headers.get("x-forwarded-proto") ?? "http";
+  const redirectResponse = NextResponse.redirect(new URL(next, `${proto}://${host}`));
+
+  // Client SSR che scrive i cookie sulla redirectResponse
+  const serverClient = createServerClient(supabaseUrl, anonKey, {
+    cookies: {
+      getAll() { return request.cookies.getAll(); },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          redirectResponse.cookies.set(name, value, options);
+        });
+      },
+    },
   });
 
-  const { data: signInData, error: signInError } = await regularClient.auth.signInWithPassword({
+  // signInWithPassword sul client SSR → scrive automaticamente la sessione nei cookie
+  const { data: signInData, error: signInError } = await serverClient.auth.signInWithPassword({
     email,
     password: DEV_PASSWORD,
   });
@@ -78,13 +94,6 @@ export async function GET(request: NextRequest) {
   if (signInError || !signInData.session) {
     return NextResponse.json({ error: signInError?.message ?? "Login fallito" }, { status: 500 });
   }
-
-  // 3. Inietta la sessione nel cookie (stesso meccanismo di /auth/callback)
-  const serverClient = await createServerClient();
-  await serverClient.auth.setSession({
-    access_token: signInData.session.access_token,
-    refresh_token: signInData.session.refresh_token,
-  });
 
   // 4. Sync Cardholder record (inline — avoids Prisma/pooler, uses PostgREST/HTTP)
   try {
@@ -97,27 +106,33 @@ export async function GET(request: NextRequest) {
       .eq("supabaseUid", userId)
       .maybeSingle();
 
+    const now = new Date().toISOString();
     if (!existing) {
       const nameParts =
         (signInData.user.user_metadata?.full_name as string | undefined)?.split(" ") ?? [];
-      const now = new Date().toISOString();
       const { error: insertError } = await adminClient.from("Cardholder").insert({
         id: crypto.randomUUID(),
         supabaseUid: userId,
         email: userEmail,
-        nome: nameParts[0] ?? "",
-        cognome: nameParts.slice(1).join(" ") ?? "",
+        nome: nameParts[0] ?? "Dev",
+        cognome: nameParts.slice(1).join(" ") || "User",
+        onboardingCompleted: true, // dev login bypassa l'onboarding
         createdAt: now,
         updatedAt: now, // @updatedAt has no DB default — must be provided on insert
       });
       if (insertError) {
         console.error("[dev/login] insert Cardholder error:", insertError);
       }
+    } else {
+      // Assicura onboardingCompleted=true anche per record esistenti
+      await adminClient
+        .from("Cardholder")
+        .update({ onboardingCompleted: true, updatedAt: now })
+        .eq("id", existing.id);
     }
   } catch (err) {
     console.error("[dev/login] syncCardholder error:", err);
   }
 
-  const next = request.nextUrl.searchParams.get("next") ?? "/dashboard";
-  return NextResponse.redirect(new URL(next, request.url));
+  return redirectResponse;
 }

@@ -5,7 +5,10 @@ const PUBLIC_PATHS = [
   "/auth/login",
   "/auth/callback",
   "/auth/signout",
+  "/auth/accept-invite",
 ];
+
+const B2B_ROLES = new Set(["company_admin", "company_employee"]);
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -35,7 +38,9 @@ export async function middleware(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + "/"));
+  const isOnboarding = pathname === "/onboarding" || pathname.startsWith("/onboarding/");
 
+  // Unauthenticated: send to login (onboarding also requires auth)
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/login";
@@ -46,6 +51,21 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
+  }
+
+  // Onboarding is accessible to any authenticated user regardless of role
+  if (user && isOnboarding) {
+    return supabaseResponse;
+  }
+
+  // Protected routes: require a B2B role; new users go to onboarding to register their company
+  if (user && !isPublic) {
+    const role = (user.user_metadata?.role as string | undefined) ?? "";
+    if (!B2B_ROLES.has(role)) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/onboarding";
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;

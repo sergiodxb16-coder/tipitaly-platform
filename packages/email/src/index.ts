@@ -4,6 +4,7 @@ export { CouponDownloadedEmail } from "./coupon-downloaded";
 export { CardPurchasedEmail } from "./card-purchased";
 export { TravelBookingEmail } from "./travel-booking";
 export { B2bOutreachEmail } from "./b2b-outreach";
+export { B2bInviteEmail } from "./b2b-invite";
 
 import { Resend } from "resend";
 import { render } from "@react-email/components";
@@ -101,6 +102,25 @@ export async function sendTravelBookingEmail(params: {
     ? `Prenotazione confermata — ${params.hotelName ?? "Hotel"}`
     : `Volo confermato — ${params.origin} → ${params.destination}`;
   return resend.emails.send({ from: FROM, to: params.to, subject, html });
+}
+
+// ─── B2B Invite (Resend) ─────────────────────────────────────────────────────
+
+import { B2bInviteEmail } from "./b2b-invite";
+
+export async function sendB2bInviteEmail(params: {
+  to: string;
+  ragioneSociale: string;
+  inviteUrl: string;
+}): Promise<void> {
+  const html = await render(B2bInviteEmail({ ragioneSociale: params.ragioneSociale, inviteUrl: params.inviteUrl }));
+  const resend = getResend();
+  await resend.emails.send({
+    from: FROM,
+    to: params.to,
+    subject: `Sei stato invitato a unirti a ${params.ragioneSociale} su TipItaly B2B`,
+    html,
+  });
 }
 
 // ─── Agent 01 B2B Outreach (Gmail SMTP — built-in tls, no extra deps) ────────

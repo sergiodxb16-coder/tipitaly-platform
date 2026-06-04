@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { prisma } from "@tip-italy/db";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   isRateHawkConfigured,
   searchHotels,
@@ -12,11 +12,36 @@ import {
 } from "@tip-italy/db/ratehawk";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import type { CardLevel } from "@tip-italy/db";
-import type { TravelOffer } from "@tip-italy/db";
 
 export const metadata = { title: "Soggiorni e Viaggi — TipItaly Card" };
 export const dynamic = "force-dynamic";
+
+/* ─── Bottom Nav ─────────────────────────────────────────────── */
+function BottomNav() {
+  const items = [
+    { id: "home",    label: "Home",    emoji: "🏠", href: "/dashboard" },
+    { id: "esplora", label: "Esplora", emoji: "🔍", href: "/dashboard/esplora" },
+    { id: "wallet",  label: "Wallet",  emoji: "🎟️", href: "/dashboard/wallet" },
+    { id: "tipa",    label: "Concierge", emoji: "✨", href: "/dashboard/tipa" },
+    { id: "profilo", label: "Profilo", emoji: "👤", href: "/profilo" },
+  ];
+  return (
+    <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white/95 backdrop-blur-md px-4 pb-safe">
+      <div className="flex items-center justify-around py-2">
+        {items.map((item) => (
+          <Link key={item.id} href={item.href}
+            className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-all ${
+              item.id === "esplora" ? "text-orange-500" : "text-gray-400 hover:text-gray-600"
+            }`}
+          >
+            <span className="text-xl">{item.emoji}</span>
+            <span className="text-[10px] font-medium">{item.label}</span>
+          </Link>
+        ))}
+      </div>
+    </nav>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Tier discounts
@@ -388,7 +413,16 @@ function FlightSearchForm({
   );
 }
 
-function EditorialOffers({ offers, cardLevel }: { offers: TravelOffer[]; cardLevel: string }) {
+type EditorialOffer = {
+  id: string;
+  titolo: string;
+  destinazione: string;
+  scontoPercent: string | number;
+  travelAdvantageUrl?: string | null;
+  scadenza?: Date | null;
+};
+
+function EditorialOffers({ offers, cardLevel }: { offers: EditorialOffer[]; cardLevel: string }) {
   if (offers.length === 0) return null;
   return (
     <div className="mt-6">
@@ -467,18 +501,30 @@ export default async function TravelPage({
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/auth/login");
 
-  const cardholder = await prisma.cardholder.findUnique({
-    where: { supabaseUid: user.id },
-  });
-  if (!cardholder) redirect("/auth/login");
+  const admin = createAdminClient();
 
-  const assignment = await prisma.cardAssignment.findFirst({
-    where: { cardholderId: cardholder.id },
-    include: { card: true },
-  });
+  // 1. Cardholder
+  const { data: cardholder } = await admin
+    .from("Cardholder")
+    .select("id, email, nome, cognome")
+    .eq("supabaseUid", user.id)
+    .maybeSingle();
 
-  const isCardActive = assignment?.card.status === "ACTIVE";
-  const cardLevel = (assignment?.card.level ?? "WHITE") as string;
+  if (!cardholder) redirect("/onboarding");
+
+  // 2. Card assignment (più recente)
+  const { data: assignmentRow } = await admin
+    .from("CardAssignment")
+    .select("id, Card(id, level, status)")
+    .eq("cardholderId", cardholder.id)
+    .order("assignedAt", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const card = assignmentRow?.Card as any;
+  const isCardActive = card?.status === "ACTIVE";
+  const cardLevel = (card?.level ?? "WHITE") as string;
   const discountPct = TIER_DISCOUNT[cardLevel] ?? 0;
 
   const sp = await searchParams;
@@ -542,21 +588,27 @@ export default async function TravelPage({
   }
 
   // Editorial offers (fallback + curated section)
-  const editorialOffers = await prisma.travelOffer.findMany({
-    where: {
-      isActive: true,
-      OR: [{ scadenza: null }, { scadenza: { gt: new Date() } }],
-    },
-    orderBy: [{ scadenza: "asc" }, { createdAt: "desc" }],
-    take: 6,
-  });
+  const { data: editorialOffersRaw } = await admin
+    .from("TravelOffer")
+    .select("id, titolo, destinazione, scontoPercent, travelAdvantageUrl, scadenza, minCardLevel, isActive")
+    .eq("isActive", true)
+    .or(`scadenza.is.null,scadenza.gt.${new Date().toISOString()}`)
+    .order("scadenza", { ascending: true, nullsFirst: false })
+    .limit(6);
+
+  const editorialOffers = (editorialOffersRaw ?? []).map((o) => ({
+    ...o,
+    scadenza: o.scadenza ? new Date(o.scadenza) : null,
+    scontoPercent: o.scontoPercent,
+  }));
 
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-8">
+    <>
+    <div className="mx-auto max-w-5xl px-6 py-8 pb-24">
       {/* Header */}
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -804,5 +856,7 @@ export default async function TravelPage({
         </>
       )}
     </div>
+    <BottomNav />
+    </>
   );
 }

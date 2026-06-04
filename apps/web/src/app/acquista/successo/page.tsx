@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { stripe } from "@/lib/stripe";
+import { getStripe } from "@/lib/stripe";
 
 export default async function SuccessPage({
   searchParams,
@@ -10,7 +10,7 @@ export default async function SuccessPage({
 
   if (!session_id) redirect("/acquista");
 
-  const session = await stripe.checkout.sessions.retrieve(session_id, {
+  const session = await getStripe().checkout.sessions.retrieve(session_id, {
     expand: ["line_items"],
   });
 

@@ -13,6 +13,7 @@
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.46.2",
     "@tip-italy/db": "workspace:*",
+    "@tip-italy/email": "workspace:*",
     "@tip-italy/ui": "workspace:*",
     "next": "^15.0.4",
     "react": "^19.0.0",

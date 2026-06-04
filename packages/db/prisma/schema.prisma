@@ -64,6 +64,17 @@ model Cardholder {
   partnerRatings    PartnerRating[]
 }
 
+enum CompanyMemberRole {
+  ADMIN
+  EMPLOYEE
+}
+
+enum CompanyMemberStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
 // ─── B2B Company ─────────────────────────────────────────────────────────────
 
 // Corporate client that purchases card batches for their employees
@@ -76,6 +87,25 @@ model Company {
   updatedAt      DateTime @updatedAt
 
   cardBatches CardBatch[]
+  members     CompanyMember[]
+}
+
+model CompanyMember {
+  id          String              @id @default(cuid())
+  companyId   String
+  email       String
+  nome        String?
+  cognome     String?
+  role        CompanyMemberRole   @default(EMPLOYEE)
+  status      CompanyMemberStatus @default(PENDING)
+  invitedAt   DateTime            @default(now())
+  activatedAt DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, email])
 }
 
 // ─── Card Inventory ──────────────────────────────────────────────────────────
