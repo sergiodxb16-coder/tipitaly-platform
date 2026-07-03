@@ -1,25 +1,47 @@
 /**
- * ratehawk.ts — client per l'API B2B RateHawk / WorldOta
+ * ratehawk.ts — client per l'API B2B RateHawk / WorldOta (ETG)
  *
- * Documentazione: https://www.ratehawk.com/my/settings/?tab=api
- * Base URL: https://api.worldota.net/api/b2b/v3/
- * Auth: HTTP Basic (KEY_ID : API_KEY base64-encoded)
+ * VERSIONE CORRETTA — 2026-07-02 (ticket APIR-50640)
+ * Endpoint verificati sulla sandbox con la chiave 646.
  *
- * Variabili d'ambiente richieste:
- *   RATEHAWK_KEY_ID  — Key ID fornito da RateHawk
- *   RATEHAWK_API_KEY — API Key fornita da RateHawk
+ * Correzioni rispetto alla versione precedente:
+ *  - searchHotels: non usa più /hotel/search/multicomplete/ (404). Flusso corretto:
+ *      /search/multicomplete/  (risolve la destinazione in region_id)
+ *      → /search/serp/region/  (ricerca hotel + tariffe)
+ *      → /api/content/v1/hotel_content_by_ids/ (nome, stelle, foto, indirizzo)
+ *  - getHotelRates: usa /search/hp/ (tariffe reali con book_hash), non /hotel/info/
+ *    (che restituisce solo contenuto statico, senza tariffe).
+ *  - Mapping campi allineato alle risposte reali:
+ *      prezzo EUR = payment_types[].show_amount / show_currency_code
+ *      (amount/currency_code sono in USD), meal, room_name, allotment, cancellation_penalties.
+ *  - searchFlights: la chiave sandbox NON abilita alcun endpoint aviation.
+ *    La funzione resta per compatibilità ma lancia un errore chiaro finché
+ *    RateHawk non rilascia l'accesso avia (vedi isRateHawkAviationEnabled()).
+ *
+ * Base URL configurabile via env RATEHAWK_BASE_URL (default: produzione).
+ * Auth: HTTP Basic  RATEHAWK_KEY_ID : RATEHAWK_API_KEY
  */
 
-const RATEHAWK_BASE = "https://api.worldota.net/api/b2b/v3";
+const RATEHAWK_HOST = (
+  process.env.RATEHAWK_BASE_URL ?? "https://api.worldota.net"
+).replace(/\/+$/, "");
+
+const B2B_BASE = `${RATEHAWK_HOST}/api/b2b/v3`;
+const CONTENT_BASE = `${RATEHAWK_HOST}/api/content/v1`;
+
+/** Dimensione immagini richieste (placeholder {size} nelle URL di RateHawk). */
+const IMAGE_SIZE = "1024x768";
 
 // ---------------------------------------------------------------------------
 // Tipi pubblici
 // ---------------------------------------------------------------------------
 
 export type RateHawkSearchParams = {
-  /** Destinazione libera (città, regione, ID) — oppure usa hotelId per hotel singolo */
+  /** Destinazione testuale (città/regione) — risolta in region_id via multicomplete */
   destination?: string;
-  /** ID WorldOta di un hotel specifico */
+  /** region_id numerico RateHawk (se noto, evita il passaggio multicomplete) */
+  regionId?: number;
+  /** id WorldOta di un hotel specifico (ricerca su singolo hotel via /search/hp/) */
   hotelId?: string;
   checkin: string;   // "YYYY-MM-DD"
   checkout: string;  // "YYYY-MM-DD"
@@ -28,10 +50,13 @@ export type RateHawkSearchParams = {
   currency?: string;    // default: EUR
   residency?: string;   // default: it
   language?: string;    // default: it
+  /** limite hotel per cui recuperare il contenuto (nome/foto). default 30 */
+  contentLimit?: number;
 };
 
 export type RateHawkHotel = {
   id: string;
+  hid?: number;
   name: string;
   starRating: number;
   address: string;
@@ -46,18 +71,22 @@ export type RateHawkHotel = {
 };
 
 export type RateHawkRate = {
-  bookHash: string;
+  /** hash per prebook/prenotazione (presente in /search/hp/) */
+  bookHash?: string;
+  /** hash risultato SERP (presente in /search/serp/*) */
+  matchHash?: string;
   roomName: string;
-  boardType: string;  // es. "breakfast", "all_inclusive"
+  boardType: string;  // es. "breakfast", "all_inclusive", "nomeal"
   price: number;
   currency: string;
   cancellationPolicy: string;
+  freeCancellationUntil?: string; // "YYYY-MM-DD" se rimborsabile
   availableRooms: number;
 };
 
 export type RateHawkSearchResult = {
   hotels: RateHawkHotel[];
-  searchId: string;
+  regionId?: number;
 };
 
 export type RateHawkHotelDetail = {
@@ -73,266 +102,336 @@ function getAuthHeader(): string {
   const keyId = process.env.RATEHAWK_KEY_ID;
   const apiKey = process.env.RATEHAWK_API_KEY;
   if (!keyId || !apiKey) {
-    throw new Error(
-      "Variabili RATEHAWK_KEY_ID e RATEHAWK_API_KEY non configurate"
-    );
+    throw new Error("Variabili RATEHAWK_KEY_ID e RATEHAWK_API_KEY non configurate");
   }
   const token = Buffer.from(`${keyId}:${apiKey}`).toString("base64");
   return `Basic ${token}`;
 }
 
-async function ratehawkPost<T>(endpoint: string, body: object): Promise<T> {
-  const res = await fetch(`${RATEHAWK_BASE}${endpoint}`, {
+async function ratehawkPost<T>(url: string, body: object): Promise<T> {
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: getAuthHeader(),
     },
     body: JSON.stringify(body),
-    // nessuna cache — prezzi in tempo reale
-    cache: "no-store",
+    cache: "no-store", // prezzi in tempo reale
   });
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(
-      `RateHawk API error ${res.status} su ${endpoint}: ${text.slice(0, 200)}`
-    );
+    throw new Error(`RateHawk API error ${res.status} su ${url}: ${text.slice(0, 300)}`);
   }
-
-  return res.json() as Promise<T>;
-}
-
-async function ratehawkGet<T>(
-  endpoint: string,
-  params: Record<string, string>
-): Promise<T> {
-  const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`${RATEHAWK_BASE}${endpoint}?${qs}`, {
-    headers: { Authorization: getAuthHeader() },
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(
-      `RateHawk API error ${res.status} su ${endpoint}: ${text.slice(0, 200)}`
-    );
-  }
-
   return res.json() as Promise<T>;
 }
 
 // ---------------------------------------------------------------------------
-// Risposta raw RateHawk (struttura semplificata per il mapping)
+// Tipi raw (struttura reale verificata in sandbox 2026-07-02)
 // ---------------------------------------------------------------------------
 
-type RawSerpHotel = {
-  id: string;
-  name: string;
-  star_rating: number;
-  address: string;
-  city: string;
-  latitude: number;
-  longitude: number;
-  images: string[];
-  min_price: { amount: string; currency_code: string } | null;
-  rating: { score: number; count: number } | null;
+type RawPaymentType = {
+  amount: string;               // in valuta netta (spesso USD)
+  currency_code: string;
+  show_amount: string;          // in valuta richiesta (EUR)
+  show_currency_code: string;
+  cancellation_penalties?: {
+    policies?: Array<{
+      start_at: string | null;
+      end_at: string | null;
+      amount_charge?: string;
+      amount_show?: string;
+    }>;
+  };
 };
 
+type RawRate = {
+  book_hash?: string;
+  match_hash?: string;
+  room_name?: string;
+  meal?: string;
+  allotment?: number;
+  daily_prices?: string[];
+  payment_options: { payment_types: RawPaymentType[] };
+};
+
+type RawSerpHotel = { id: string; hid: number; rates: RawRate[] };
+
 type RawSerpResponse = {
-  data: { hotels: RawSerpHotel[]; search_id: string };
+  data: { hotels: RawSerpHotel[] } | null;
   status: string;
   error?: string | null;
 };
 
-type RawHotelInfoResponse = {
+type RawMulticompleteResponse = {
   data: {
-    id: string;
-    name: string;
-    star_rating: number;
-    address: string;
-    city_name: string;
-    latitude: number;
-    longitude: number;
-    images: string[];
-    rates: Array<{
-      book_hash: string;
-      room_name: string;
-      meal: string;
-      payment_options: { payment_types: Array<{ amount: string; currency_code: string }> };
-      cancellation_penalty: { policies: Array<{ start_at: string | null; amount: string }> };
-      rooms_available: number;
-    }>;
-    rating: { score: number; count: number } | null;
+    hotels: Array<{ id: string; hid: number; name: string; region_id: number }>;
+    regions: Array<{ id: number; type: string; name: string }>;
   };
   status: string;
   error?: string | null;
 };
 
+type RawContentHotel = {
+  id: string;
+  hid: number;
+  name: string;
+  star_rating: number;
+  address: string;
+  latitude: number;
+  longitude: number;
+  images_ext?: Array<{ url: string; category_slug?: string }>;
+  region?: { name?: string };
+};
+
+type RawContentResponse = {
+  data: RawContentHotel[];
+  status: string;
+  error?: string | null;
+};
+
 // ---------------------------------------------------------------------------
-// In-memory cache (TTL 5 minuti)
+// Cache in-memory (TTL 5 minuti) per le ricerche
 // ---------------------------------------------------------------------------
 
 type CacheEntry<T> = { data: T; expiresAt: number };
 const _searchCache = new Map<string, CacheEntry<RateHawkSearchResult>>();
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
-function cacheKey(params: RateHawkSearchParams): string {
+function cacheKey(p: RateHawkSearchParams): string {
   return JSON.stringify({
-    d: params.destination ?? params.hotelId,
-    ci: params.checkin,
-    co: params.checkout,
-    a: params.adults,
-    cur: params.currency ?? "EUR",
+    d: p.regionId ?? p.destination ?? p.hotelId,
+    ci: p.checkin, co: p.checkout, a: p.adults,
+    ch: p.children ?? [], cur: p.currency ?? "EUR",
   });
+}
+
+// ---------------------------------------------------------------------------
+// Mapping helpers
+// ---------------------------------------------------------------------------
+
+/** Estrae prezzo (EUR) dalla prima payment_type di una tariffa. */
+function ratePrice(r: RawRate): { price: number; currency: string } {
+  const pt = r.payment_options?.payment_types?.[0];
+  if (!pt) return { price: 0, currency: "EUR" };
+  return {
+    price: parseFloat(pt.show_amount ?? pt.amount ?? "0"),
+    currency: pt.show_currency_code ?? pt.currency_code ?? "EUR",
+  };
+}
+
+/** Deriva la politica di cancellazione leggibile dalle policies. */
+function cancellation(r: RawRate): { text: string; freeUntil?: string } {
+  const pt = r.payment_options?.payment_types?.[0];
+  const policies = pt?.cancellation_penalties?.policies ?? [];
+  // policy gratuita = amount_show 0 con una data di fine (end_at)
+  const free = policies.find(
+    (p) => parseFloat(p.amount_show ?? p.amount_charge ?? "0") === 0 && p.end_at
+  );
+  if (free?.end_at) {
+    const d = free.end_at.slice(0, 10);
+    return { text: `Cancellazione gratuita fino al ${d}`, freeUntil: d };
+  }
+  return { text: "Non rimborsabile" };
+}
+
+function mapRate(r: RawRate): RateHawkRate {
+  const { price, currency } = ratePrice(r);
+  const c = cancellation(r);
+  return {
+    bookHash: r.book_hash,
+    matchHash: r.match_hash,
+    roomName: r.room_name ?? "Camera standard",
+    boardType: r.meal ?? "nomeal",
+    price,
+    currency,
+    cancellationPolicy: c.text,
+    freeCancellationUntil: c.freeUntil,
+    availableRooms: r.allotment ?? 1,
+  };
+}
+
+function contentImages(h: RawContentHotel): string[] {
+  return (h.images_ext ?? [])
+    .slice(0, 5)
+    .map((i) => i.url.replace("{size}", IMAGE_SIZE));
+}
+
+/** Recupera il contenuto (nome/stelle/foto) per una lista di hotel id. */
+async function fetchContent(
+  ids: string[],
+  language: string
+): Promise<Map<string, RawContentHotel>> {
+  const map = new Map<string, RawContentHotel>();
+  if (ids.length === 0) return map;
+  try {
+    const raw = await ratehawkPost<RawContentResponse>(
+      `${CONTENT_BASE}/hotel_content_by_ids/`,
+      { ids, language }
+    );
+    for (const h of raw.data ?? []) map.set(h.id, h);
+  } catch {
+    // il contenuto è best-effort: se fallisce si mostrano comunque id + prezzo
+  }
+  return map;
 }
 
 // ---------------------------------------------------------------------------
 // API pubblica
 // ---------------------------------------------------------------------------
 
+/** Risolve una destinazione testuale nel primo region_id di tipo città. */
+export async function resolveRegionId(
+  destination: string,
+  language = "it"
+): Promise<number | undefined> {
+  const lookup = async (lang: string) => {
+    const raw = await ratehawkPost<RawMulticompleteResponse>(
+      `${B2B_BASE}/search/multicomplete/`,
+      { query: destination, language: lang }
+    );
+    const regions = raw.data?.regions ?? [];
+    return (regions.find((r) => r.type === "RT_CITY") ?? regions[0])?.id;
+  };
+  // Alcune destinazioni sono indicizzate solo in inglese (soprattutto in sandbox):
+  // se la lingua richiesta non produce regioni, si ritenta in "en".
+  return (await lookup(language)) ?? (language !== "en" ? await lookup("en") : undefined);
+}
+
 /**
- * Cerca hotel per destinazione o hotel singolo.
- * Restituisce una lista di hotel con prezzo minimo.
- * Risultati cachati per 5 minuti per ridurre costi API.
+ * Cerca hotel per destinazione/region_id (o singolo hotel via hotelId).
+ * Restituisce hotel con prezzo minimo, arricchiti con nome/stelle/foto dal content API.
+ * Risultati cachati 5 minuti.
  */
 export async function searchHotels(
   params: RateHawkSearchParams
 ): Promise<RateHawkSearchResult> {
   const key = cacheKey(params);
   const cached = _searchCache.get(key);
-  if (cached && Date.now() < cached.expiresAt) {
-    return cached.data;
-  }
+  if (cached && Date.now() < cached.expiresAt) return cached.data;
 
-  const guests: Array<{ adults: number; children: number[] }> = [
-    { adults: params.adults, children: params.children ?? [] },
-  ];
-
-  const body: Record<string, unknown> = {
+  const language = params.language ?? "it";
+  const currency = params.currency ?? "EUR";
+  const guests = [{ adults: params.adults, children: params.children ?? [] }];
+  const common = {
     checkin: params.checkin,
     checkout: params.checkout,
     guests,
-    currency: params.currency ?? "EUR",
+    currency,
     residency: params.residency ?? "it",
-    language: params.language ?? "it",
+    language,
   };
 
+  // Ricerca su singolo hotel → usa /search/hp/
   if (params.hotelId) {
-    body["id"] = params.hotelId;
-  } else {
-    body["region"] = { name: params.destination ?? "" };
+    const detail = await getHotelRates(params.hotelId, params);
+    const result: RateHawkSearchResult = { hotels: [detail.hotel] };
+    _searchCache.set(key, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
+    return result;
+  }
+
+  // Risolvi region_id
+  let regionId = params.regionId;
+  if (!regionId && params.destination) {
+    regionId = await resolveRegionId(params.destination, language);
+  }
+  if (!regionId) {
+    throw new Error(
+      `RateHawk: destinazione non risolta in un region_id (${params.destination ?? "nessuna destinazione"})`
+    );
   }
 
   const raw = await ratehawkPost<RawSerpResponse>(
-    "/hotel/search/multicomplete/",
-    body
+    `${B2B_BASE}/search/serp/region/`,
+    { ...common, region_id: regionId }
   );
-
-  if (raw.status !== "ok" || raw.error) {
+  if (raw.status !== "ok" || raw.error || !raw.data) {
     throw new Error(`RateHawk search error: ${raw.error ?? raw.status}`);
   }
 
-  const hotels: RateHawkHotel[] = (raw.data.hotels ?? []).map((h) => ({
-    id: h.id,
-    name: h.name,
-    starRating: h.star_rating ?? 0,
-    address: h.address ?? "",
-    city: h.city ?? "",
-    latitude: h.latitude ?? 0,
-    longitude: h.longitude ?? 0,
-    images: h.images?.slice(0, 3) ?? [],
-    minPrice: h.min_price ? parseFloat(h.min_price.amount) : 0,
-    currency: h.min_price?.currency_code ?? (params.currency ?? "EUR"),
-    reviewScore: h.rating?.score,
-    reviewCount: h.rating?.count,
-  }));
+  const rawHotels = raw.data.hotels ?? [];
+  const limit = params.contentLimit ?? 30;
+  const top = rawHotels.slice(0, limit);
+  const content = await fetchContent(top.map((h) => h.id), language);
 
-  const result: RateHawkSearchResult = { hotels, searchId: raw.data.search_id };
+  const hotels: RateHawkHotel[] = top.map((h) => {
+    const prices = (h.rates ?? []).map((r) => ratePrice(r).price).filter((p) => p > 0);
+    const minPrice = prices.length ? Math.min(...prices) : 0;
+    const c = content.get(h.id);
+    return {
+      id: h.id,
+      hid: h.hid,
+      name: c?.name ?? h.id,
+      starRating: c?.star_rating ?? 0,
+      address: c?.address ?? "",
+      city: c?.region?.name ?? "",
+      latitude: c?.latitude ?? 0,
+      longitude: c?.longitude ?? 0,
+      images: c ? contentImages(c) : [],
+      minPrice,
+      currency,
+    };
+  });
+
+  const result: RateHawkSearchResult = { hotels, regionId };
   _searchCache.set(key, { data: result, expiresAt: Date.now() + CACHE_TTL_MS });
   return result;
 }
 
 /**
- * Recupera dettaglio di un hotel con tariffe disponibili.
+ * Dettaglio di un hotel con tariffe disponibili (HotelPage) e book_hash per prenotare.
+ * Endpoint: POST /search/hp/  (verificato). Contenuto statico dal content API.
  */
 export async function getHotelRates(
   hotelId: string,
-  params: Pick<RateHawkSearchParams, "checkin" | "checkout" | "adults" | "children" | "currency">
+  params: Pick<
+    RateHawkSearchParams,
+    "checkin" | "checkout" | "adults" | "children" | "currency" | "residency" | "language"
+  >
 ): Promise<RateHawkHotelDetail> {
-  const guests = [
-    { adults: params.adults, children: params.children ?? [] },
-  ];
+  const language = params.language ?? "it";
+  const currency = params.currency ?? "EUR";
+  const guests = [{ adults: params.adults, children: params.children ?? [] }];
 
-  const body = {
+  const raw = await ratehawkPost<RawSerpResponse>(`${B2B_BASE}/search/hp/`, {
     id: hotelId,
     checkin: params.checkin,
     checkout: params.checkout,
     guests,
-    currency: params.currency ?? "EUR",
-    residency: "it",
-    language: "it",
-  };
-
-  const raw = await ratehawkPost<RawHotelInfoResponse>(
-    "/hotel/info/",
-    body
-  );
-
-  if (raw.status !== "ok" || raw.error) {
-    throw new Error(`RateHawk hotel info error: ${raw.error ?? raw.status}`);
+    currency,
+    residency: params.residency ?? "it",
+    language,
+  });
+  if (raw.status !== "ok" || raw.error || !raw.data) {
+    throw new Error(`RateHawk hotel page error: ${raw.error ?? raw.status}`);
   }
 
-  const d = raw.data;
+  const rawHotel = raw.data.hotels?.[0];
+  const rates: RateHawkRate[] = (rawHotel?.rates ?? []).map(mapRate);
+
+  const content = await fetchContent([hotelId], language);
+  const c = content.get(hotelId);
+  const prices = rates.map((r) => r.price).filter((p) => p > 0);
 
   const hotel: RateHawkHotel = {
-    id: d.id,
-    name: d.name,
-    starRating: d.star_rating ?? 0,
-    address: d.address ?? "",
-    city: d.city_name ?? "",
-    latitude: d.latitude ?? 0,
-    longitude: d.longitude ?? 0,
-    images: d.images?.slice(0, 5) ?? [],
-    minPrice: 0,
-    currency: params.currency ?? "EUR",
-    reviewScore: d.rating?.score,
-    reviewCount: d.rating?.count,
+    id: hotelId,
+    hid: rawHotel?.hid,
+    name: c?.name ?? hotelId,
+    starRating: c?.star_rating ?? 0,
+    address: c?.address ?? "",
+    city: c?.region?.name ?? "",
+    latitude: c?.latitude ?? 0,
+    longitude: c?.longitude ?? 0,
+    images: c ? contentImages(c) : [],
+    minPrice: prices.length ? Math.min(...prices) : 0,
+    currency,
   };
-
-  const rates: RateHawkRate[] = (d.rates ?? []).map((r) => {
-    const paymentType = r.payment_options.payment_types?.[0];
-    const price = paymentType ? parseFloat(paymentType.amount) : 0;
-    const currency = paymentType?.currency_code ?? (params.currency ?? "EUR");
-
-    const firstCancellation = r.cancellation_penalty?.policies?.[0];
-    const cancellationPolicy = firstCancellation?.start_at
-      ? `Cancellazione gratuita fino al ${firstCancellation.start_at.slice(0, 10)}`
-      : "Non rimborsabile";
-
-    return {
-      bookHash: r.book_hash,
-      roomName: r.room_name,
-      boardType: r.meal ?? "room_only",
-      price,
-      currency,
-      cancellationPolicy,
-      availableRooms: r.rooms_available ?? 1,
-    };
-  });
-
-  // Imposta prezzo minimo sul hotel
-  if (rates.length > 0) {
-    hotel.minPrice = Math.min(...rates.map((r) => r.price));
-  }
 
   return { hotel, rates };
 }
 
 /**
  * Restituisce true se le variabili d'ambiente RateHawk sono configurate.
- * Utile per mostrare un fallback UI quando l'API non è ancora attiva.
  */
 export function isRateHawkConfigured(): boolean {
   return Boolean(
@@ -343,19 +442,20 @@ export function isRateHawkConfigured(): boolean {
   );
 }
 
-// ─── Aviation Types ──────────────────────────────────────────────────────────
-// RateHawk B2B avia: stessa autenticazione/base URL degli hotel
-// Endpoint: POST /avia/search/  (verificare path esatto sulla sandbox)
-// Docs: https://www.ratehawk.com/my/settings/?tab=api (tab Aviation)
+// ─── Aviation ────────────────────────────────────────────────────────────────
+// ATTENZIONE: la chiave sandbox 646 (APIR-50640) NON abilita alcun endpoint
+// aviation (verificato via /overview/ il 2026-07-02: 0 endpoint avia/flight).
+// RateHawk avia è un prodotto ETG separato. Finché non viene abilitato,
+// il tab "Voli" deve mostrare un fallback (usa isRateHawkAviationEnabled()).
 
 export type RateHawkFlightSearchParams = {
-  origin: string;        // codice IATA (es. "FCO")
-  destination: string;   // codice IATA (es. "CDG")
-  departureDate: string; // "YYYY-MM-DD"
-  returnDate?: string;   // "YYYY-MM-DD" — se presente, ricerca andata/ritorno
-  adults?: number;       // default: 1
-  currency?: string;     // default: EUR
-  max?: number;          // max risultati, default: 10
+  origin: string;
+  destination: string;
+  departureDate: string;
+  returnDate?: string;
+  adults?: number;
+  currency?: string;
+  max?: number;
 };
 
 export type RateHawkFlightOffer = {
@@ -374,114 +474,26 @@ export type RateHawkFlightOffer = {
   bookingClass: string;
 };
 
-// Raw avia response types
-type RawAviaSegment = {
-  departure_airport: string;
-  arrival_airport: string;
-  departure_at: string;        // ISO datetime
-  marketing_carrier: string;   // codice IATA compagnia
-  marketing_flight_number: string;
-  duration_minutes: number;
-  stops?: number;
-};
-
-type RawAviaOffer = {
-  id: string;
-  segments: RawAviaSegment[];
-  return_segments?: RawAviaSegment[];
-  total_duration_minutes: number;
-  stops: number;
-  price: { amount: string; currency_code: string };
-  fare_class: string;
-};
-
-type RawAviaSearchResponse = {
-  data: { offers: RawAviaOffer[] };
-  status: string;
-  error?: string | null;
-};
-
-const AIRLINE_NAMES: Record<string, string> = {
-  AZ: "ITA Airways", FR: "Ryanair", U2: "easyJet", VY: "Vueling",
-  LH: "Lufthansa", AF: "Air France", BA: "British Airways", KL: "KLM",
-  IB: "Iberia", TP: "TAP Air Portugal", EK: "Emirates", TK: "Turkish Airlines",
-  W6: "Wizz Air", EN: "Air Dolomiti", EW: "Eurowings",
-};
-
-function formatDurationMinutes(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+/** L'aviation è abilitata solo se esplicitamente attivata via env (contratto separato). */
+export function isRateHawkAviationEnabled(): boolean {
+  return process.env.RATEHAWK_AVIATION_ENABLED === "true";
 }
 
 /**
- * Cerca voli via RateHawk aviation (stessa API key degli hotel).
- * Endpoint verificato sulla sandbox RateHawk: POST /avia/search/
+ * Ricerca voli. NON supportata dalla chiave attuale (nessun endpoint aviation).
+ * Lancia un errore esplicito finché RateHawk non rilascia l'accesso avia.
  */
 export async function searchFlights(
-  params: RateHawkFlightSearchParams
+  _params: RateHawkFlightSearchParams
 ): Promise<RateHawkFlightOffer[]> {
-  const segments: Array<{ departure_date: string; departure: string; arrival: string }> = [
-    {
-      departure_date: params.departureDate,
-      departure: params.origin.toUpperCase(),
-      arrival: params.destination.toUpperCase(),
-    },
-  ];
-
-  if (params.returnDate) {
-    segments.push({
-      departure_date: params.returnDate,
-      departure: params.destination.toUpperCase(),
-      arrival: params.origin.toUpperCase(),
-    });
+  if (!isRateHawkAviationEnabled()) {
+    throw new Error(
+      "RateHawk aviation non disponibile su questa chiave (APIR-50640: solo hotel). " +
+        "Richiedere l'accesso avia a apisupport@ratehawk.com e impostare RATEHAWK_AVIATION_ENABLED=true."
+    );
   }
-
-  const body = {
-    segments,
-    passengers: { adults: params.adults ?? 1, children: 0, infants: 0 },
-    currency: params.currency ?? "EUR",
-    language: "it",
-    residency: "it",
-    trip_class: "economy",
-    limit: params.max ?? 10,
-  };
-
-  const raw = await ratehawkPost<RawAviaSearchResponse>("/avia/search/", body);
-
-  if (raw.status !== "ok" || raw.error) {
-    throw new Error(`RateHawk avia search error: ${raw.error ?? raw.status}`);
-  }
-
-  const offers = raw.data?.offers ?? [];
-
-  return offers.slice(0, params.max ?? 10).map((o): RateHawkFlightOffer => {
-    const firstSeg = o.segments[0];
-    const lastSeg = o.segments[o.segments.length - 1];
-    const returnSeg = o.return_segments?.[0];
-
-    const flightNums = o.segments
-      .map((s) => `${s.marketing_carrier}${s.marketing_flight_number}`)
-      .join(", ");
-
-    const airlineName = AIRLINE_NAMES[firstSeg.marketing_carrier] ?? firstSeg.marketing_carrier;
-
-    return {
-      id: o.id,
-      origin: firstSeg.departure_airport,
-      destination: lastSeg.arrival_airport,
-      departureDate: firstSeg.departure_at.slice(0, 10),
-      returnDate: returnSeg ? returnSeg.departure_at.slice(0, 10) : undefined,
-      airline: airlineName,
-      flightNumbers: flightNums,
-      duration: formatDurationMinutes(o.total_duration_minutes),
-      stops: o.stops,
-      adults: params.adults ?? 1,
-      totalPrice: parseFloat(o.price.amount),
-      currency: o.price.currency_code,
-      bookingClass: o.fare_class ?? "ECONOMY",
-    };
-  });
+  // TODO: implementare quando l'endpoint avia sarà fornito e verificato in sandbox.
+  throw new Error("RateHawk aviation: endpoint non ancora implementato.");
 }
 
 // ---------------------------------------------------------------------------
@@ -489,6 +501,7 @@ export async function searchFlights(
 // ---------------------------------------------------------------------------
 
 const BOARD_LABELS: Record<string, string> = {
+  nomeal: "Solo pernottamento",
   room_only: "Solo pernottamento",
   breakfast: "Colazione inclusa",
   half_board: "Mezza pensione",
